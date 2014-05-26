@@ -8,7 +8,7 @@ SRC_DIR=src
 CPPFLAGS= -g
 
 # Files to compile
-OCT_FILES=ilu0.oct
+OCT_FILES=ilu0.oct ilutp.oct
 
 .SUFFIXES: .oct
 .PHONY: benchmark
@@ -25,4 +25,3 @@ clean :
 	rm *.oct
 
 benchmark :
-	octave benchmark/benchmark.m
