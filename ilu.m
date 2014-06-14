@@ -167,7 +167,7 @@ function [L, U, P] = ilu (A, setup)
   endif
 
   if (~isfield (setup, "type"))
-    setup.type = "ilutp"; % set default
+    setup.type = "nofill"; % set default
   else
     type = tolower (getfield (setup, "type"));
     if ((strcmp (type, "nofill") == 0)
@@ -229,9 +229,9 @@ function [L, U, P] = ilu (A, setup)
   switch (setup.type)
     case "nofill"
       if (setup.milu == "col")
-        disp("ilu0 with milu=\"col\" not implemented yet!");
+        disp("ilu0 with milu=\"col\" not implemented yet! Use milu=\"row\" or \"off\"");
       else
-        S = ilu0 (A, milu);
+        S = ilu0 (A, setup.milu);
         L = tril (S, -1) + speye (length (S)); 
         U = triu (S);
       endif
@@ -243,7 +243,7 @@ function [L, U, P] = ilu (A, setup)
       endif
     case "ilutp"
       if (setup.milu == "row")
-        disp("ilutp with milu=\"row\" not implemented yet!");
+        disp("ilutp with milu=\"row\" not implemented yet! Use setup.milu=\"col\" or \"off\"");
       else
         if (nargout == 2)
           [L, U, p]  = ilutp(A, setup.droptol, setup.thresh, setup.milu, setup.udiag);

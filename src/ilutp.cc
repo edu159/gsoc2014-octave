@@ -200,6 +200,7 @@ void ilu_tp (octave_matrix_t& sm, octave_matrix_t& L, octave_matrix_t& U, octave
               *(++it);
             }
         }
+      // Implementation for milu="col" or milu="off"
       else
         {
           it = iw_u.begin ();
