@@ -21,7 +21,7 @@
 
 
 template <typename octave_matrix_t, typename T>
-void ilu_0(octave_matrix_t& sm,const  std::string milu) {
+void ilu_0(octave_matrix_t& sm,const  std::string milu = "") {
   // sm is modified outside so big matrices are not copied twice in memmory 
   // sm is transposed before and after the algorithm because the algorithm is 
   // thought to work with CRS instead of CCS. That does the trick.
@@ -44,6 +44,7 @@ void ilu_0(octave_matrix_t& sm,const  std::string milu) {
     opt = 2;
   else
     opt = 0;
+
    
   for (i = 0; i < n; i++)
     iw[i] = -1;
@@ -77,18 +78,22 @@ void ilu_0(octave_matrix_t& sm,const  std::string milu) {
           j++;
           jrow = ridx[j];
         }
+      if (k != jrow)
+        {
+          error("ilu0: Your input matrix has a zero in the diagonal.");
+          break;
+        }
       uptr[k] = j;
       // That is for the milu='row'
       if(opt == 1)
         data[uptr[k]] -= r;
-      for(i = j1; i <= j2 ; i++)
-        iw[ridx[i]] = -1;
-      //An element in the diagonal is 0
       if (data[j] == T(0))
         {
-          error ("ilu0: zero pivot encountered");
+          error ("ilu0: There is a pivot equal to zero.");
           break;
         }
+      for(i = j1; i <= j2 ; i++)
+        iw[ridx[i]] = -1;
     }
     sm = sm.transpose ();
 }
@@ -109,10 +114,9 @@ DEFUN_DLD (ilu0, args, nargout, "-*- texinfo -*-")
 
   if (nargin == 2) 
     if (args (1).is_string ())
-      error ("ilu0: Second parameter should be 'row' or 'col'.");
-    else
       milu = args (1).string_value ();
-
+    else
+      error ("ilu0: Second parameter should be 'row' or 'col'.");
   if (! error_state)
     {
       

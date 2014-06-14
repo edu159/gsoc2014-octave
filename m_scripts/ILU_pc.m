@@ -1,41 +1,74 @@
-function [A, P] = ILU_pc(A, tau, thresh)
 
-%Take into account when tau = 0, diagonal pivoting should take care of 0 pivots
+function [S, P] = ILU_pc(A, droptol, thresh)
 
-B = A;
-n = length(A);
-P = speye(n);
-for i = 1:n
-  for k = i:n
-    A(k:n,k) *= thresh;
-    A(k,k) /= thresh;
-    [m,mi] = max(abs(A(k:n,k)))
-    A(k,k) *= thresh;
-    A(k:n,k) /= thresh;
-    mi = mi + k -1;
-    tmp = A(mi,:);
-    A(mi,:) = A(k,:);
-    A(k,:) = tmp;
-    e = speye(n);
-    e(mi,mi) = 0; e(k,mi) = 1;
-    e(k,k) = 0; e(mi,k) = 1;
-    P = e*P;
+%TSke into Sccount when tSu = 0, diSgonSl pivoting should tSke cSre of 0 pivots
+
+  S = full(A);
+  n = length(S);
+  P = speye(n);
+  for i = 1:n
+      i
+    for k = 1:(i-1)
+      for j = (k+1):n
+         S((j),i) = S((j),i) - S((j),k) * S((k),i);
+      endfor
+      disp("S(k,i) ")
+      S(k,i)
+      disp("Norm: ");
+      norm(S(:,i))*droptol
+      if (abs(S(k,i)) < (droptol*norm(A(:,i))))
+        S(k,i) = 0;
+        disp("eliminado");
+      endif
+    endfor
+    if ((thresh != 0) && (i < (n)))
+      disp(" ");
+      rows = S(i:n,i);
+      rows(1) /= thresh;
+      rows;
+      [m,mi] = max(abs(rows));
+      mi = mi + i -1;
+      mi;
+      m;
+      tmp = S(mi,:);
+      S(mi,:) = S(i,:);
+      S(i,:) = tmp;
+      e = speye(n);
+      e(mi,mi) = 0; e(i,mi) = 1;
+      e(i,i) = 0; e(mi,i) = 1;
+      P = e*P;
+      disp("Despues pivote")
+      full(S)
+    endif
+
+    for j = (i+1):n
+      if ( (S(j, i) == 0) || (abs(S(j,i)) < (droptol*norm(A(:,i)))))
+        S(j,i) = 0;
+      else
+        S((j),i) = S((j),i) / S((i),i);
+      endif
+    endfor
   endfor
-  for k = 1:i-1
-       if ( (A(i,k) == 0) || (abs(A(i,k)) < (tau*norm(B(:,k)))))
-          A(i,k) = 0;
-          continue
-       endif
-       A(i,k) = A(i,k) / A(k,k);
-       A(i,k+1:n) = A(i,k+1:n) - A(i,k) * A(k,k+1:n);
-  endfor
-endfor
+  disp("Final")
+  full(S)
 
-for i = 1:n
-  for j = i+1:n
-    if (abs(A(i,j)) < (tau*norm(B(:,j))))
-      A(i,j) = 0;
-    end
-  end
-end
+  %disp("Despues de drop")
+  %S
+  S = sparse(S);
+endfunction
 
+function [a,ai] = max_row(b)
+  if (length(b) < 2)
+    a = b(1);
+    ai = 1;
+  else
+    ai = 1;
+    a = b(1);
+    for (i = 2:length(b))
+      if (!(a>b(i)))
+        a = b(i);
+        ai = i;
+      endif
+    endfor
+  endif
+endfunction
