@@ -228,32 +228,31 @@ function [L, U, P] = ilu (A, setup)
   % Delegate to specialized ILU
   switch (setup.type)
     case "nofill"
-      if (setup.milu == "col")
-        disp("ilu0 with milu=\"col\" not implemented yet! Use milu=\"row\" or \"off\"");
-      else
         S = ilu0 (A, setup.milu);
-        L = tril (S, -1) + speye (length (S)); 
+        L = tril (S, -1) + speye (length (S));
         U = triu (S);
-      endif
     case "crout"
-      if (setup.droptol > 0)
-        disp("Crout option not implemented yet!");
-      else
-        disp("Crout option not implemented yet!");
-      endif
+        [L, U] = iluc(tril(A, -1), triu(A), setup.droptol, setup.milu);
+        L += speye(length(A));
     case "ilutp"
-      if (setup.milu == "row")
-        disp("ilutp with milu=\"row\" not implemented yet! Use setup.milu=\"col\" or \"off\"");
-      else
+    %  if (setup.milu == "row")
+    %    disp("ilutp with milu=\"row\" not implemented yet! Use setup.milu=\"col\" or \"off\"");
+    %  else
         if (nargout == 2)
           [L, U, p]  = ilutp(A, setup.droptol, setup.thresh, setup.milu, setup.udiag);
           L += speye(length(A)) (:,p+1);
         elseif (nargout == 3)
           [L, U, p]  = ilutp(A, setup.droptol, setup.thresh, setup.milu, setup.udiag);
-          L = L (p+1, :) + speye(length(A));
+          if (setup.milu == "row")
+            U = U (:, p+1);
+            U = U + diag(diag(L));
+            L(logical(speye(size(L)))) = 1;
+          else
+            L = L (p+1, :) + speye(length(A));
+          endif 
           P = speye(length(A)) (p+1, :);
         endif
-      endif
+     % endif
     otherwise
       printf ("The input structure is invalid.\n");
   endswitch

@@ -46,19 +46,37 @@ void ilu_tp (octave_matrix_t& sm, octave_matrix_t& L, octave_matrix_t& U, octave
   // sm is transposed before and after the algorithm because the algorithm is 
   // thought to work with CRS instead of CCS. That does the trick.
   
+  // Map the strings into chars to faster comparation inside loops
+  // That increase quite a lot the performance!
+  #define ROW  1
+  #define COL  2
+  #define OFF  0
+  char opt;
+  if (milu == "row")
+    opt = ROW;
+  else if (milu == "col")
+    opt = COL;
+  else
+    opt = OFF;
+  
   const octave_idx_type n = sm.cols ();
+
+  if (opt == ROW)
+    {
+      sm = sm.transpose();
+    }
   // Extract pointers to the arrays for faster access inside loops
   OCTAVE_LOCAL_BUFFER(T, cols_norm, n);
   octave_idx_type* cidx_in = sm.cidx ();
   octave_idx_type* ridx_in = sm.ridx ();
   T* data_in = sm.data();
-//  OCTAVE_LOCAL_BUFFER (octave_idx_type, uptr, n);
+  OCTAVE_LOCAL_BUFFER (octave_idx_type, uptr, n);
   octave_idx_type j1, j2, jrow, i, j, k, jj, p, diag, c, total_len_l, total_len_u,p_perm, res, max_ind;
   T tl, r, aux, maximun;
-  char opt;
 
   // Data for L
-  // ridx and data are fixed to the maximun possible ((n^2+n)/2)
+  // FIXME: ridx_l/u and data_l/u are fixed to the maximun possible ((n^2+n)/2)
+  //        that can be enhanced expanding a vector with an apropiate policy
   Array <octave_idx_type> cidx_out_l(dim_vector(n+1,1));
   octave_idx_type* cidx_l = cidx_out_l.fortran_vec();
   Array <octave_idx_type> ridx_out_l(dim_vector((n*n+n)/2,1));
@@ -90,7 +108,7 @@ void ilu_tp (octave_matrix_t& sm, octave_matrix_t& L, octave_matrix_t& U, octave
 
   // Working arrays and permutation arrays
   octave_idx_type w_ind_u, w_len_u, w_len_l, w_ind_l, ndrop_u, ndrop_l;
-  T col_sum, partial_col_sum;
+  T total_sum, partial_col_sum, partial_row_sum;
   std::set<octave_idx_type> iw_l;
   std::set<octave_idx_type> iw_u;
   std::set<octave_idx_type>::iterator  it, it2;
@@ -99,17 +117,6 @@ void ilu_tp (octave_matrix_t& sm, octave_matrix_t& L, octave_matrix_t& U, octave
   OCTAVE_LOCAL_BUFFER (T, w_data, n);
   OCTAVE_LOCAL_BUFFER (octave_idx_type, iperm, n);
 
-  // Map the strings into chars to faster comparation inside loops
-  // That increase quite a lot the performance!
-  #define ROW  1
-  #define COL  2
-  #define OFF  0
-  if (milu == "row")
-    opt = ROW;
-  else if (milu == "col")
-    opt = COL;
-  else
-    opt = OFF;
   for (i = 0; i < n; i++)
     {
       w_data[i] = 0;
@@ -118,6 +125,7 @@ void ilu_tp (octave_matrix_t& sm, octave_matrix_t& L, octave_matrix_t& U, octave
     }
   total_len_u = 0;
   total_len_l = 0;
+
 
   for (k = 0; k < n; k++)
     {
@@ -131,95 +139,60 @@ void ilu_tp (octave_matrix_t& sm, octave_matrix_t& L, octave_matrix_t& U, octave
           p_perm = iperm[ridx_in[j]];
           w_data[iperm[ridx_in[j]]] = data_in[j];
           if (p_perm > k)
-            if (opt == ROW) 
-              {
-                iw_u.insert(ridx_in[j]);
-                w_len_u++;
-              }
-            else
               {
                 iw_l.insert(ridx_in[j]);
                 w_len_l++;
               }
           else
-            if (opt == ROW) 
-              {
-                iw_l.insert(p_perm);
-                w_len_l++;
-              }
-            else
               {
                 iw_u.insert(p_perm);
                 w_len_u++;
               }
         }
 
-      
+      //printf("k:%d\n",k);
+    /** 
+     printf("data principio: ");
+       for (i=0;i<n;i++)
+         printf("%f ", w_data[i]);
+     printf("\n");
+     **/
       r = 0;
       ndrop_u = 0;
       ndrop_l = 0;
-      //TODO: Implementation for milu="row". It is nice to place it here or maybe separated?
-      if (opt == ROW)
-        {
-          it = iw_l.begin(); 
-          while ((jrow < k) && (it != iw_l.end())) 
-            {
-              if (w_data[jrow] != zero)
-                {
-                  if (std::abs (w_data[jrow]) < (droptol * cols_norm[jrow]))
-                    {
-                      w_data[jrow] = zero;
-                      ndrop_l++;
-                    }
-                  else
-                    {
-                      //TODO: Finish milu="row" algorithm
-                      /**
-                      tl = w_data[jrow] / data[jrow];
-                      w_data[jrow] = tl;
-                      aux;
-                      for (jj = uptr[jrow] + 1; jj <= cidx[jrow+1]-1; jj++)
-                        {
-                          aux = w_data[ridx[jj]];
-                          w_data[ridx[jj]] = w_data[ridx[jj]] - tl * data[jj];
-                          if ((aux == zero) && (w_data[ridx[jj]] != zero))
-                              {
-                                iw[w_len] = ridx[jj];
-                                jw[ridx[jj]] = w_len;
-                                w_len++;
-                              }
-                          else if ((aux != zero) && (w_data[ridx[jj]] == zero))
-                            ndrop++;
-                          // That is for the milu='row'
-                          // if (opt == 1)
-                          //  r += tl*w_data[ridx[jj]];
-                        }
-                        **/
-                    }
-                }
-              *(++it);
-            }
-        }
       // Implementation for milu="col" or milu="off"
-      else
-        {
           it = iw_u.begin ();
           jrow = *it;
-          col_sum = zero;
+          total_sum = zero;
           while ((jrow < k) && (it != iw_u.end ())) 
             {
               if (opt == COL)
                 partial_col_sum = w_data[jrow];
               if (w_data[jrow] != zero)
                 {
+                  if (opt == ROW)
+                    {
+                      //printf("jrow: %d diag: %f\n", jrow, data_u[uptr[k-1]]);
+                      partial_row_sum = w_data[jrow];
+                      tl = w_data[jrow] / data_u[uptr[jrow]];
+                      //printf(" norm: %f, data: %f\n", cols_norm[k], std::abs(w_data[jrow]));
+                    }
                   for (jj = cidx_l[jrow]; jj < cidx_l[jrow+1]; jj++)
                     {
                       p_perm = iperm[ridx_l[jj]];
                       aux = w_data[p_perm];
-                      tl = data_l[jj] * w_data[jrow];
+                      if (opt == ROW)
+                        {
+                          w_data[p_perm] -= tl*data_l[jj];
+                          partial_row_sum += tl*data_l[jj];
+                        }
+                      else
+                        {
+                          tl = data_l[jj] * w_data[jrow]; 
+                          w_data[p_perm] -= tl;
+                        }
                       if (opt == COL)
                         partial_col_sum += tl;
-                      w_data[p_perm] -= tl;
 
                       // In this case a new element has appeared in a position with 0
                       // TODO: Maybe nodes from the binary tree that correspond to indexes of elements
@@ -247,20 +220,39 @@ void ilu_tp (octave_matrix_t& sm, octave_matrix_t& L, octave_matrix_t& U, octave
                             ndrop_u++;
                         }
                     }
-                  // Drop elements from the U part
-                  if (std::abs (w_data[jrow]) < (droptol * cols_norm[k]))
-                    {
-                      if (opt == COL)
-                        col_sum += partial_col_sum;
-                      w_data[jrow] = zero;
-                      ndrop_u++;
-                    }
-
+                  /**
+                  printf("data fin: ");
+                    for (i=0;i<n;i++)
+                      printf("%f ", w_data[i]);
+                  printf("\n");
+                  **/
+                    // Drop elements from the U part
+                    if (std::abs (w_data[jrow]) < (droptol * cols_norm[k]) && (w_data[jrow] != zero))
+                      {
+                        if (opt == COL)
+                          total_sum += partial_col_sum;
+                        else if (opt = ROW)
+                          total_sum += partial_row_sum;
+                        w_data[jrow] = zero;
+                        ndrop_u++;
+                        it2 = it;;
+                        it++;
+                        iw_u.erase (it2);
+                        jrow = *it;
+                        continue;
+                      }
+                    else 
+                      if (opt == ROW)
+                        w_data[jrow] = tl;
                 }
               jrow = *(++it);
             }
-
-
+/**
+                  printf("data before pivot: ");
+                    for (i=0;i<n;i++)
+                      printf("%f ", w_data[i]);
+                  printf("\n");
+**/
           // Search for the pivot and update iw_l and iw_u if the pivote is not the diagonal element
           if ((thresh) > zero && (k <(n-1)))
             {
@@ -271,7 +263,7 @@ void ilu_tp (octave_matrix_t& sm, octave_matrix_t& L, octave_matrix_t& U, octave
                   p_perm = iperm[*it];
                   if (std::abs (w_data[p_perm]) > maximun)
                     {
-                      maximun = w_data[p_perm];
+                      maximun = std::abs (w_data[p_perm]);
                       max_ind = *it;
                       it2 = it; 
                     }
@@ -301,36 +293,45 @@ void ilu_tp (octave_matrix_t& sm, octave_matrix_t& L, octave_matrix_t& U, octave
                 }
               
           }              
-          // Add the L terms that  are going to be dropped to the diagonal
-          if (opt == COL)
-            for (it = iw_l.begin (); it != iw_l.end (); ++it) 
+          it = iw_l.begin ();
+            while (it != iw_l.end ()) 
               {
                   p_perm = iperm[*it];
                   if (droptol > zero)
                     if (std::abs (w_data[p_perm]) < (droptol * cols_norm[k]))
-                      if (opt == COL)
-                        col_sum += w_data[p_perm];
+                      {
+                        if (opt != OFF)
+                          total_sum += w_data[p_perm];
+                        w_data[p_perm] = zero;
+                        ndrop_l++;
+                        it2 = it;
+                        it++;
+                        iw_l.erase (it2);
+                        continue;
+                      }
+                it++;
               }
 
-          if (opt == COL)
-            w_data[k] += col_sum;
+          // Compensation for row or col sumation
+          if (opt != OFF)
+            {
+              if (w_data[k] == zero)
+                {
+                  iw_u.insert (k);
+                  w_len_u++;
+                }
+              w_data[k] += total_sum;
+            }
+              
+          //printf("total_sum : %f\n", total_sum);
 
           // Scale al the L terms by the pivote and drop the elements  
-          for (it = iw_l.begin (); it != iw_l.end (); ++it) 
-            {
-                p_perm = iperm[*it];
-                if (droptol > zero)
-                  if (std::abs (w_data[p_perm]) < (droptol * cols_norm[k]))
-                    {
-                      w_data[p_perm] = zero;
-                      ndrop_l++;
-                      continue;
-                    }
-                w_data[p_perm] = w_data[p_perm] / w_data[k];
-            }
-          
-
-        }
+          if (opt != ROW)
+            for (it = iw_l.begin (); it != iw_l.end (); ++it) 
+              {
+                  p_perm = iperm[*it];
+                  w_data[p_perm] = w_data[p_perm] / w_data[k];
+              }
 
         if (w_data[k] == zero)
           {
@@ -339,7 +340,6 @@ void ilu_tp (octave_matrix_t& sm, octave_matrix_t& L, octave_matrix_t& U, octave
                 w_data[k] = droptol;
                 iw_u.insert(k);
                 w_len_u++;
-                printf("Diagonal sustituida\n");
               }
             else
               {
@@ -349,6 +349,7 @@ void ilu_tp (octave_matrix_t& sm, octave_matrix_t& L, octave_matrix_t& U, octave
           }
 
         c = w_len_u - ndrop_u;
+        uptr[k] = total_len_u + c -1;
         p = 0;
 
         // Extract the U part
@@ -379,7 +380,32 @@ void ilu_tp (octave_matrix_t& sm, octave_matrix_t& L, octave_matrix_t& U, octave
           }
         }
         total_len_l += c;
-
+        /**
+        printf("U cidx: ");
+        for (i=0; i < n; i++) 
+          printf("%d ", cidx_u[i]);
+        printf("\n");
+        printf("U ridx: ");
+        for (i=0; i < total_len_u; i++) 
+          printf("%d ", ridx_u[i]);
+        printf("\n");
+        printf("U data: ");
+        for (i=0; i < total_len_u; i++) 
+          printf("%f ", data_u[i]);
+        printf("\n");
+        printf("L cidx: ");
+        for (i=0; i < n; i++) 
+          printf("%d ", cidx_l[i]);
+        printf("\n");
+        printf("L ridx: ");
+        for (i=0; i < total_len_l; i++) 
+          printf("%d ", ridx_l[i]);
+        printf("\n");
+        printf("L data: ");
+        for (i=0; i < total_len_l; i++) 
+          printf("%f ", data_l[i]);
+        printf("\n");
+        **/
         // Clear the auxiliar data structures
         for (i=0; i < n; i++)
           {
@@ -415,8 +441,18 @@ void ilu_tp (octave_matrix_t& sm, octave_matrix_t& L, octave_matrix_t& U, octave
         j++;
       }
     }
-    U = octave_matrix_t (data_out_u, ridx_out_u, cidx_out_expand_u, n, n);
-    L = octave_matrix_t (data_out_l, ridx_out_l, cidx_out_expand_l, n, n);
+    if (opt == ROW) 
+      {
+        L = octave_matrix_t (data_out_u, ridx_out_u, cidx_out_expand_u, n, n);
+        U = octave_matrix_t (data_out_l, ridx_out_l, cidx_out_expand_l, n, n);
+        U = U.transpose ();
+        L = L.transpose ();
+      }
+    else
+      {
+        U = octave_matrix_t (data_out_u, ridx_out_u, cidx_out_expand_u, n, n);
+        L = octave_matrix_t (data_out_l, ridx_out_l, cidx_out_expand_l, n, n);
+      }
   }
 }
 
