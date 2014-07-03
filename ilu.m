@@ -1,4 +1,6 @@
 ## Copyright (C) 2013 Kai T. Ohlhus <k.ohlhus@gmail.com>
+## Copyright (C) 2014 Eduardo Ramos Fernández <k.ohlhus@gmail.com>
+##
 ## 
 ## This file is part of Octave.
 ## 
@@ -69,7 +71,7 @@
 ## @code{abs(@var{L}(i,j)) >= droptol * norm(@var{A}(:,j))/@var{U}(j,j)}.
 ##
 ## @item milu
-## (NOT SUPPORTED) Modified incomplete LU factorization. Values for milu
+## Modified incomplete LU factorization. Values for milu
 ## include:
 ## @table @asis
 ## @item @samp{row}
@@ -87,11 +89,11 @@
 ## @end table
 ##
 ## @item udiag
-## (NOT SUPPORTED) If udiag is 1, any zeros on the diagonal of the upper
+## If udiag is 1, any zeros on the diagonal of the upper
 ## triangular factor are replaced by the local drop tolerance. The default is 0.
 ##
 ## @item thresh
-## (NOT SUPPORTED) Pivot threshold between 0 (forces diagonal pivoting) and 1,
+## Pivot threshold between 0 (forces diagonal pivoting) and 1,
 ## the default, which always chooses the maximum magnitude entry in the column
 ## to be the pivot.
 ## @end table
@@ -101,11 +103,19 @@
 ## lower triangular matrix and @var{U} is an upper triangular matrix.
 ##
 ## @code{[@var{L}, @var{U}] = ilu (@var{A},@var{setup})} returns a unit lower
-## triangular matrix in @var{L} and an upper triangular matrix in @var{U}.
+## triangular matrix in @var{L} and an upper triangular matrix in @var{U}. When
+## SETUP.type = 'ilutp', the role of @var{P} is determined by the value of
+## SETUP.milu. For SETUP.type == 'ilutp', one of the factors is permuted
+## based on the value of SETUP.milu. When SETUP.milu == 'row', U is a column 
+## permuted upper triangular factor. Otherwise, L is a row-permuted unit lower 
+## triangular factor.
 ##
 ## @code{[@var{L}, @var{U}, @var{P}] = ilu (@var{A},@var{setup})} returns a
 ## unit lower triangular matrix in @var{L}, an upper triangular matrix in
-## @var{U}, and a permutation matrix in @var{P}.
+## @var{U}, and a permutation matrix in @var{P}. When SETUP.milu ~= 'row', @var{P} 
+## is returned such that @var{L} and @var{U} are incomplete factors of @var{P}*@var{A}.
+## When SETUP.milu == 'row', @var{P} is returned such that and @var{U} are 
+## incomplete factors of A*P.
 ##
 ## @strong{NOTE}: ilu works on sparse square matrices only.
 ##
@@ -153,9 +163,9 @@ function [L, U, P] = ilu (A, setup)
   endif
 
   % Check input matrix
-  if (isempty (A) || ~issparse(A) || ~issquare (A))
-    error ("ilu: Input A must be a non-empty sparse square matrix");
-  endif
+   if (~issparse(A) || ~issquare (A))
+    error ("ilu: Input A must be a sparse square matrix.");
+   endif
 
   % Check input structure, otherwise set default values
   if (nargin == 2)
@@ -190,7 +200,6 @@ function [L, U, P] = ilu (A, setup)
   if (~isfield (setup, "milu"))
     setup.milu = "off"; % set default
   else
-    %warning ("ilu: The input structure field \"milu\" is not supported.")
     milu = tolower (getfield (setup, "milu"));
     if ((strcmp (milu, "off") == 0) 
         && (strcmp (milu, "col") == 0)
@@ -204,7 +213,6 @@ function [L, U, P] = ilu (A, setup)
   if (~isfield (setup, "udiag"))
     setup.udiag = 0; % set default
   else
-    %warning ("ilu: The input structure field \"udiag\" is not supported.")
     if (~isscalar (setup.udiag) || ((setup.udiag ~= 0) && (setup.udiag ~= 1)))
       error ("ilu: Invalid field \"udiag\" in input structure.");
     endif
@@ -213,7 +221,6 @@ function [L, U, P] = ilu (A, setup)
   if (~isfield (setup, "thresh"))
     setup.thresh = 1; % set default
   else
-    %warning ("ilu: The input structure field \"thresh\" is not supported.")
     if (~isscalar (setup.thresh) || (setup.thresh < 0) || (setup.thresh > 1))
       error ("ilu: Invalid field \"thresh\" in input structure.");
     endif
@@ -221,38 +228,24 @@ function [L, U, P] = ilu (A, setup)
 
   n = length (A);
 
-  if (nargout == 3)
-    P = speye (n);
-  endif
-
   % Delegate to specialized ILU
   switch (setup.type)
     case "nofill"
-        S = ilu0 (A, setup.milu);
-        L = tril (S, -1) + speye (length (S));
-        U = triu (S);
-    case "crout"
-        [L, U] = iluc(tril(A, -1), triu(A), setup.droptol, setup.milu);
-        L += speye(length(A));
-    case "ilutp"
-    %  if (setup.milu == "row")
-    %    disp("ilutp with milu=\"row\" not implemented yet! Use setup.milu=\"col\" or \"off\"");
-    %  else
-        if (nargout == 2)
-          [L, U, p]  = ilutp(A, setup.droptol, setup.thresh, setup.milu, setup.udiag);
-          L += speye(length(A)) (:,p+1);
-        elseif (nargout == 3)
-          [L, U, p]  = ilutp(A, setup.droptol, setup.thresh, setup.milu, setup.udiag);
-          if (setup.milu == "row")
-            U = U (:, p+1);
-            U = U + diag(diag(L));
-            L(logical(speye(size(L)))) = 1;
-          else
-            L = L (p+1, :) + speye(length(A));
-          endif 
-          P = speye(length(A)) (p+1, :);
+        [L, U] = ilu0 (A, setup.milu);
+        if (nargout == 3)
+          P = speye (length (A));
         endif
-     % endif
+    case "crout"
+        [L, U] = iluc (A, setup.droptol, setup.milu);
+        if (nargout == 3)
+          P = speye (length (A));
+        endif
+    case "ilutp"
+        if (nargout == 2)
+          [L, U]  = ilutp (A, setup.droptol, setup.thresh, setup.milu, setup.udiag);
+        elseif (nargout == 3)
+          [L, U, P]  = ilutp (A, setup.droptol, setup.thresh, setup.milu, setup.udiag);
+        endif
     otherwise
       printf ("The input structure is invalid.\n");
   endswitch
@@ -267,24 +260,23 @@ endfunction
 %! n = 1600;
 %! dtol = 0.1;
 %! A = gallery ('neumann', n) + speye (n);
-%!testif HAVE_ITSOL && HAVE_ZITSOL
+%!test
 %! setup.type = 'nofill';
-%! assert (nnz (ilu (A, setup)), 7840)
-%!testif HAVE_ITSOL && HAVE_ZITSOL
-%! # This test is taken from the mathworks and should work for full support, but
-%! # MILU is currently not supported.
-%! #setup.type = 'crout';
-%! #setup.milu = 'row';
-%! #setup.droptol = dtol;
-%! #[L,U] = ilu (A,setup);
-%! #e = ones (size(A,2),1);
-%! #assert(norm(A*e-L*U*e), 1e-14, 1e-14)
-%!testif HAVE_ITSOL && HAVE_ZITSOL
+%! assert (nnz (ilu (A, setup)), 7840);
+%!test
+%! # This test is taken from the mathworks and should work for full support.
+%! setup.type = 'crout';
+%! setup.milu = 'row';
+%! setup.droptol = dtol;
+%! [L,U] = ilu (A,setup);
+%! e = ones (size(A,2),1);
+%! assert(norm(A*e-L*U*e), 1e-14, 1e-14);
+%!test
 %! setup.type = 'crout';
 %! setup.droptol = dtol;
 %! [L,U] = ilu(A,setup);
-%! assert (norm (A - L * U, 'fro') / norm (A, 'fro'), 0.05, 1e-2)
-%!testif HAVE_ITSOL && HAVE_ZITSOL
+%! assert (norm (A - L * U, 'fro') / norm (A, 'fro'), 0.05, 1e-2);
+%!test
 %! setup.type = 'crout';
 %! setup.droptol = dtol;
 %! [L,U] = ilu (A, setup);
@@ -295,7 +287,7 @@ endfunction
 %!     assert (abs (non_zeros (i)) >= cmp_value, logical (1));
 %!   endfor
 %! endfor
-%!testif HAVE_ITSOL && HAVE_ZITSOL
+%!test
 %! setup.type = 'crout';
 %! setup.droptol = dtol;
 %! [L,U] = ilu (A, setup);
@@ -306,10 +298,10 @@ endfunction
 %!     assert (abs (non_zeros (i)) >= cmp_value, logical (1));
 %!   endfor
 %! endfor
-%!testif HAVE_ITSOL && HAVE_ZITSOL
+%!test
 %! setup.type = 'crout';
 %! setup.droptol = 0;
 %! [L1,U1] = ilu (A, setup);
-%! [L2,U2] = lu (A);
-%! assert (norm (L1 - L2, 'fro') / norm (L1, 'fro'), 0, eps)
-%! assert (norm (U1 - U2, 'fro') / norm (U1, 'fro'), 0, eps)
+%! [L2,U2] = ilu (A);
+%! # assert (norm (L1 - L2, 'fro') / norm (L1, 'fro'), 0, eps);
+%! # assert (norm (U1 - U2, 'fro') / norm (U1, 'fro'), 0, eps);

@@ -1,3 +1,3 @@
 #!/bin/sh
-octave  --eval "addpath('..','../m_scripts');" --persist
+octave --no-gui --eval "addpath('..','../m_scripts');" --persist
 

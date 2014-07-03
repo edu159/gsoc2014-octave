@@ -1,5 +1,6 @@
 /**
- * Copyright (C) 2013 Eduardo Ramos Fernández <eduradical951@gmail.com>
+ * Copyright (C) 2014 Eduardo Ramos Fernández <eduradical951@gmail.com>
+ * Copyright (C) 2014 Kai T. Ohlhus <k.ohlhus@gmail.com>
  *
  * This file is part of Octave.
  *
@@ -18,40 +19,14 @@
  */
 
 #include <octave/oct.h>
-
-// Function to compute the 2nd-norm of each column of the matrix.
-template <typename T>
-void cols_2nd_norm (const octave_idx_type* cidx, const T* data, T* cols_norm, const octave_idx_type n) {
-  octave_idx_type i, j;
-  T nrm = T (0);
-  for (i = 0; i < n ; i++)
-    {
-      j = cidx[i];
-      while (j < cidx[i+1]) 
-        {
-          nrm += std::abs(data[j]) * std::abs(data[j]);
-          j++;
-        }
-      cols_norm[i] = sqrt (nrm);
-      nrm = T(0);
-    }
-}
-
-template <typename T>
-struct list_elem {
-    octave_idx_type ridx;
-    T data;
-};
+#include <octave/parse.h>
 
 template <typename octave_matrix_t, typename T>
-void ilu_crout (octave_matrix_t& sm_l, octave_matrix_t& sm_u, octave_matrix_t& L, octave_matrix_t& U, const T droptol, const  std::string milu)
-  {
-  // sm is modified outside so big matrices are not copied twice in memmory 
-  // sm is transposed before and after the algorithm because the algorithm is 
-  // thought to work with CRS instead of CCS. That does the trick.
-  
+void ilu_crout (octave_matrix_t& sm_l, octave_matrix_t& sm_u, octave_matrix_t& L, octave_matrix_t& U, 
+                T* cols_norm, T* rows_norm, const T droptol = 0, const  std::string milu = "off")
+{
+
   // Map the strings into chars to faster comparation inside loops
-  // That increase quite a lot the performance!
   #define ROW  1
   #define COL  2
   #define OFF  0
@@ -62,392 +37,450 @@ void ilu_crout (octave_matrix_t& sm_l, octave_matrix_t& sm_u, octave_matrix_t& L
     opt = COL;
   else
     opt = OFF;
+
   
   const octave_idx_type n = sm_u.cols ();
-  sm_u = sm_u.transpose();
+  sm_u = sm_u.transpose ();
   // Extract pointers to the arrays for faster access inside loops
-  OCTAVE_LOCAL_BUFFER(T, cols_norm_u, n);
-  OCTAVE_LOCAL_BUFFER(T, cols_norm_l, n);
   octave_idx_type* cidx_in_u = sm_u.cidx ();
   octave_idx_type* ridx_in_u = sm_u.ridx ();
-  T* data_in_u = sm_u.data();
+  T* data_in_u = sm_u.data ();
   octave_idx_type* cidx_in_l = sm_l.cidx ();
   octave_idx_type* ridx_in_l = sm_l.ridx ();
-  T* data_in_l = sm_l.data();
-  octave_idx_type j1, j2, jrow, i, j, k, jj, p, diag, c, total_len_l, total_len_u,p_perm, res, max_ind;
-  T tl, r, aux, maximun;
+  T* data_in_l = sm_l.data ();
+  octave_idx_type jrow, i, j, k, jj, total_len_l, total_len_u;
+  octave_idx_type  w_len_u, w_len_l, cols_list_len, rows_list_len;
+  T tl, pivot;
 
-  T zero = T(0);
-  if (droptol > zero)
-    {
-      cols_2nd_norm <T> (sm_u.cidx (), sm_u.data (), cols_norm_u , n);
-      cols_2nd_norm <T> (sm_l.cidx (), sm_l.data (), cols_norm_l , n);
-    }
+  // L output arrays
+  Array <octave_idx_type> ridx_out_l (dim_vector ((n*n + n) / 2, 1));
+  octave_idx_type* ridx_l = ridx_out_l.fortran_vec ();
+  Array <T> data_out_l (dim_vector ((n*n + n) / 2, 1));
+  T* data_l = data_out_l.fortran_vec ();
+  // U output arrays
+  Array <octave_idx_type> ridx_out_u (dim_vector ((n*n + n) / 2, 1));
+  octave_idx_type* ridx_u = ridx_out_u.fortran_vec ();
+  Array <T> data_out_u (dim_vector ((n*n + n) / 2, 1));
+  T* data_u = data_out_u.fortran_vec ();
 
-  // Working arrays and permutation arrays
-  OCTAVE_LOCAL_BUFFER(typename std::list <list_elem <T> >, cidx_l, n);
-  OCTAVE_LOCAL_BUFFER(typename std::list <list_elem <T> >, cidx_u, n);
-  OCTAVE_LOCAL_BUFFER(typename std::list <octave_idx_type>, cols_list, n);
-  OCTAVE_LOCAL_BUFFER(typename std::list <octave_idx_type>, rows_list, n);
-  octave_idx_type w_ind_u, w_len_u, w_len_l, w_ind_l, ndrop_u, ndrop_l;
-  T total_sum, partial_col_sum, partial_row_sum;
-  std::set<octave_idx_type> iw_l;
-  std::set<octave_idx_type> iw_u;
-  std::set<octave_idx_type>::iterator  it, it2;
-  typename std::list <list_elem <T> >::iterator it_list, it_row_u, it_col_l;
-  std::list <octave_idx_type>::iterator it_col_u, it_row_l;
+  // Working arrays
+  OCTAVE_LOCAL_BUFFER (octave_idx_type, cidx_l, n + 1);
+  OCTAVE_LOCAL_BUFFER (octave_idx_type, cidx_u, n + 1);
+  OCTAVE_LOCAL_BUFFER (octave_idx_type, cols_list, n);
+  OCTAVE_LOCAL_BUFFER (octave_idx_type, rows_list, n);
   OCTAVE_LOCAL_BUFFER (T, w_data_l, n);
   OCTAVE_LOCAL_BUFFER (T, w_data_u, n);
-  list_elem<T> elm;
-  std::list <list_elem <T> > list_u;
-  std::list <list_elem <T> > list_l;
-  OCTAVE_LOCAL_BUFFER(typename std::list <list_elem <T> >::iterator, Ufirst, n);
-  OCTAVE_LOCAL_BUFFER(typename std::list <list_elem <T> >::iterator, Lfirst, n);
+  OCTAVE_LOCAL_BUFFER (octave_idx_type, Ufirst, n);
+  OCTAVE_LOCAL_BUFFER (octave_idx_type, Lfirst, n);
+  OCTAVE_LOCAL_BUFFER (T, cr_sum, n);
 
+  T zero = T (0);
+  
+  cidx_u[0] = cidx_in_u[0];
+  cidx_l[0] = cidx_in_l[0];
   for (i = 0; i < n; i++)
     {
       w_data_u[i] = zero;
       w_data_l[i] = zero;
+      cr_sum[i] = zero;
     }
+
   total_len_u = 0;
   total_len_l = 0;
+  cols_list_len = 0;
+  rows_list_len = 0;
 
   for (k = 0; k < n; k++)
     {
-      ndrop_u = 0;
-      ndrop_l = 0;
-      w_len_l = 0;
-      w_len_u = 0;
-      
+      // Load the working column and working row 
       for (i = cidx_in_l[k]; i < cidx_in_l[k+1]; i++)
-        {
-          if (ridx_in_l[i] != k)
-            {
-              iw_l.insert (ridx_in_l[i]);
-              w_data_l[ridx_in_l[i]] = data_in_l[i];
-              w_len_l++;
-            }
-        }
+           w_data_l[ridx_in_l[i]] = data_in_l[i];
+
       for (i = cidx_in_u[k]; i < cidx_in_u[k+1]; i++)
-        {
-          iw_u.insert (ridx_in_u[i]);
           w_data_u[ridx_in_u[i]] = data_in_u[i];
-          w_len_u++;
-        }
-      it_row_l = rows_list[k].begin ();
-      /**
-      printf("k: %d\n", k);
-        printf("w_data_l antes: \n");
-        for (i = 0; i<n; i++)
-          printf("%f ", w_data_l[i]);
-        printf("\n");
-        printf("w_data_u antes: \n");
-        for (i = 0; i<n; i++)
-          printf("%f ", w_data_u[i]);
-        printf("\n");
-      printf("it_row: %d\n", *it_row_l);
-      **/
-      if (!rows_list[k].empty ())
-        while (it_row_l != rows_list[k].end ())
-          {
-            for (it_row_u = Ufirst[*it_row_l]; it_row_u != cidx_u[*it_row_l].end (); it_row_u++)
-              {
-                aux = w_data_u[it_row_u->ridx];
-                //printf("row_l: %f, row_u: %f , col: %d\n", Lfirst[*it_row_l]->data, it_row_u->data, it_row_u->ridx);
-                w_data_u[it_row_u->ridx] -= Lfirst[*it_row_l]->data * it_row_u->data;
-                if ((aux == zero) && (w_data_u[it_row_u->ridx] != zero))
-                  {
-                    iw_u.insert (it_row_u->ridx);
-                    w_len_u++;
-                  }
-                else if ((aux != zero) && (w_data_u[it_row_u->ridx] == zero))
-                  ndrop_u++;
-              }
-            it_row_l++;
-          }
-            
-      it_col_u = cols_list[k].begin ();
-      if (!cols_list[k].empty ())
-        while (it_col_u != cols_list[k].end ())
-          {
-            for (it_col_l = Lfirst[*it_col_u]; it_col_l != cidx_l[*it_col_u].end (); it_col_l++)
-              {
-                if (it_col_l->ridx > k)
-                  {
-                    aux = w_data_l[it_col_l->ridx];
-                    //printf("col_u: %f, col_l: %f\n", Ufirst[*it_col_u]->data, it_col_l->data);
-                    w_data_l[it_col_l->ridx] -= Ufirst[*it_col_u]->data * it_col_l->data;
-                    if ((aux == zero) && (w_data_l[it_col_l->ridx] != zero))
-                      {
-                        iw_l.insert (it_col_l->ridx);
-                        w_len_l++;
-                      }
-                    else if ((aux != zero) && (w_data_l[it_col_l->ridx] == zero))
-                      ndrop_l++;
-                  }
-              }
-            it_col_u++;
-          }
-      /**
-        printf("w_data_l: \n");
-        for (i = 0; i<n; i++)
-          printf("%f ", w_data_l[i]);
-        printf("\n");
-        printf("w_data_u: \n");
-        for (i = 0; i<n; i++)
-          printf("%f ", w_data_u[i]);
-        printf("\n");
-        **/
-        if (w_data_u[k] == zero)
-          {
-                error ("ilutp: There is a pivot equal to zero.");
-                break;
-          }
-   //   printf("diagonal: %f\n", w_data_u[k]);
-        // Extract the U part
-        for (it = iw_u.begin (); it != iw_u.end (); ++it)
+
+      // Update U working row
+      for (j = 0; j < rows_list_len; j++)
         {
-          if (w_data_u[*it] != zero)
+          if ((Ufirst[rows_list[j]] != -1))
+              for (jj = Ufirst[rows_list[j]]; jj < cidx_u[rows_list[j]+1]; jj++)
+                {
+                  jrow = ridx_u[jj];
+                  w_data_u[jrow] -= data_u[jj] * data_l[Lfirst[rows_list[j]]];
+                }
+        }
+      // Update L working column
+      for (j = 0; j < cols_list_len; j++)
+        {
+          if (Lfirst[cols_list[j]] != -1)
+            for (jj = Lfirst[cols_list[j]]; jj < cidx_l[cols_list[j]+1]; jj++)
+              {
+                jrow = ridx_l[jj];
+                w_data_l[jrow] -= data_l[jj] * data_u[Ufirst[cols_list[j]]];
+
+              }
+        }
+
+      // Check if the pivot is zero
+      if (w_data_u[k] == zero)
+        {
+              error ("ilutp: There is a pivot equal to zero.");
+              break;
+        }
+
+      // Expand the working row into the U output data structures
+      w_len_l = 0;
+      data_u[total_len_u] = w_data_u[k];
+      ridx_u[total_len_u] = k;
+      w_len_u = 1;
+      for (i = k + 1; i < n; i++)
+        {
+          if (w_data_u[i] != zero)
             {
                
-              elm.data = w_data_u[*it];
-              elm.ridx = *it;
-              cidx_u[k].push_back (elm);
+              if (std::abs (w_data_u[i]) < (droptol * rows_norm[k]))
+                {
+                  if (opt == ROW)
+                    cr_sum[k] += w_data_u[i];
+                  else if (opt == COL)
+                    cr_sum[i] += w_data_u[i];
+                }
+              else
+                {
+                  data_u[total_len_u + w_len_u] = w_data_u[i];
+                  ridx_u[total_len_u + w_len_u] = i;
+                  w_len_u++;
+                }
             }
-        }
-        // Extract the L part
-        c = w_len_u - ndrop_u;
-        total_len_u += c;
-        for (it = iw_l.begin (); it != iw_l.end (); ++it)
-        {
-          if (w_data_l[*it] != zero)
+
+          // Expand the working column into the L output data structures
+          if (w_data_l[i] != zero)
             {
-              elm.data = w_data_l[*it]/w_data_u[k];
-              elm.ridx = *it;
-              cidx_l[k].push_back (elm);
+              if (std::abs (w_data_l[i]) < (droptol * cols_norm[k]))
+                {
+                  if (opt == COL)
+                    cr_sum[k] += w_data_l[i];
+                  else if (opt == ROW)
+                    cr_sum[i] += w_data_l[i];
+                }
+              else
+                {
+                  data_l[total_len_l + w_len_l] = w_data_l[i];
+                  ridx_l[total_len_l + w_len_l] = i;
+                  w_len_l++;
+                }
             }
+          w_data_u[i] = zero;
+          w_data_l[i] = zero;
         }
-        /**
-        printf("cidx_u: ");
-        it_list = cidx_u[k].begin();
-        while (it_list != cidx_u[k].end())
+
+      // Compensate row and column sums --> milu option
+      if (opt == COL || opt == ROW)
+        data_u[total_len_u] += cr_sum[k];
+      
+      // Scale the elements in L by the pivot
+      for (i = total_len_l ; i < (total_len_l + w_len_l); i++)
+        data_l[i] /= data_u[total_len_u];
+
+
+      total_len_u += w_len_u;
+      cidx_u[k+1] = cidx_u[k] - cidx_u[0] + w_len_u;
+      total_len_l += w_len_l;
+      cidx_l[k+1] = cidx_l[k] - cidx_l[0] + w_len_l;
+
+      // The tricky part of the algorithm. The arrays pointing to the first
+      // working element of each column in the next iteration (Lfirst) or
+      // the first working element of each row (Ufirst) are updated. Also the 
+      // arrays working as lists cols_list and rows_list are filled with indexes
+      // pointing to Ufirst and Lfirst respectively.
+      // TODO: Maybe the -1 indicating in Ufirst and Lfirst, that no elements 
+      // have to be considered in a certain column or row next iteration, can be 
+      // removed. It feels safer to me using such an indicator.
+      if (k < (n - 1))
         {
-          printf ("%d ", (*it_list).ridx);
-          it_list++;
-        }
-        printf("\n");
-        printf("cidx_l: ");
-        it_list = cidx_l[k].begin();
-        while (it_list != cidx_l[k].end())
-        {
-          printf ("%d ", (*it_list).ridx);
-          it_list++;
-        }
-        printf("\n");
-        **/
-        c = w_len_l - ndrop_l;
-        total_len_l += c;
-        // Clear the auxiliar data structures
-        for (i=0; i < n; i++)
-          {
-            w_data_u[i] = zero;
-            w_data_l[i] = zero;
-          }
-        iw_l.clear ();
-        iw_u.clear ();
-        /**
-        printf("rows_list: \n");
-        for (i=0;i<n;i++)
-        {
-          printf("row %d: ", i);
-          if (!rows_list[i].empty())
-          {
-            it_row_l = rows_list[i].begin();
-            while (it_row_l != rows_list[i].end())
-              {
-              printf( "%d ", *it_row_l);
-              it_row_l++;
-              }
-          }
-        }
-        printf("\n");
-        printf("cols_list: \n");
-        for (i=0;i<n;i++)
-        {
-          printf("col %d: ", i);
-          if (!cols_list[i].empty())
-          {
-            it_row_l = cols_list[i].begin();
-            while (it_row_l != cols_list[i].end())
-              {
-              printf( "%d ", *it_row_l);
-              it_row_l++;
-              }
-          }
-        }
-        printf("\n");
-        **/
-      if (k < (n-1))
-        {
-          Ufirst[k] = cidx_u[k].begin ();
-          Lfirst[k] = cidx_l[k].begin ();
+          if (w_len_u > 0)
+            Ufirst[k] = cidx_u[k];
+          else
+            Ufirst[k] = -1;
+          if (w_len_l > 0)
+            Lfirst[k] = cidx_l[k];
+          else
+            Lfirst[k] = -1;
+          cols_list_len = 0;
+          rows_list_len = 0;
           for (i = 0; i <= k; i++)
             {
-              if (Ufirst[i]->ridx <= k)
+              if (Ufirst[i] != -1)
                 {
-                  ++(Ufirst[i]);
-                  if (Ufirst[i] != cidx_u[i].end ())
+                  jj = ridx_u[Ufirst[i]];
+                  if (jj < (k + 1))
                     {
-                      cols_list[Ufirst[i]->ridx].push_back (i);
+                      if (Ufirst[i] < (cidx_u[i+1]))
+                        {
+                          Ufirst[i]++;
+                          if (Ufirst[i] == cidx_u[i+1])
+                            Ufirst[i] = -1;
+                          else
+                            jj = ridx_u[Ufirst[i]];
+                        }
+                    }
+                  if (jj == (k + 1)) 
+                    {
+                      cols_list[cols_list_len] = i;
+                      cols_list_len++;
                     }
                 }
-              else if (i == k)
-                  cols_list[Ufirst[i]->ridx].push_back (i);
 
-              if (Lfirst[i]->ridx <= k)
+              if (Lfirst[i] != -1)
                 {
-                   ++(Lfirst[i]);
-                   if (Lfirst[i] != cidx_l[i].end ())
-                     {
-                       rows_list[Lfirst[i]->ridx].push_back (i);
-                     }
+                  jj = ridx_l[Lfirst[i]];
+                  if (jj < (k + 1))
+                    if(Lfirst[i] < (cidx_l[i+1]))
+                      {
+                        Lfirst[i]++;
+                        if (Lfirst[i] == cidx_l[i+1])
+                          Lfirst[i] = -1;
+                        else
+                          jj = ridx_l[Lfirst[i]];
+                      }
+                  if (jj == (k + 1)) 
+                    {
+                      rows_list[rows_list_len] = i;
+                      rows_list_len++;
+                    }
                 }
-              else if (i == k)
-                  rows_list[Lfirst[i]->ridx].push_back (i);
             }
         }
-       // printf("%d ", *(rows_list[Lfirst[k]->ridx].begin()));
-       // printf("\n");
-       /**
-        printf("Lfirst: ");
-        for (i=0;i<=k;i++)
-          printf("%d ",Lfirst[k]->ridx);
-        printf("\n");
-        printf("Ufirst: ");
-        for (i=0;i<=k;i++)
-          printf("%d ",Ufirst[k]->ridx);
-        printf("\n");
-        **/
+    }
 
-    }
-  //Expand cidx to fit with the constructor
-  if (!error_state) {
-    // Expand LIL format into CCS. U matrix.
-    // First do with U and then with L. This way less memory is used at the same time.
-    // TODO: Maybe inline function?
-    Array <octave_idx_type> cidx_out (dim_vector (total_len_u, 1));
-    Array <octave_idx_type> ridx_out (dim_vector (total_len_u, 1));
-    Array <T> data_out (dim_vector (total_len_u, 1));
-    octave_idx_type* cidx_out_pt = cidx_out.fortran_vec ();
-    octave_idx_type* ridx_out_pt = ridx_out.fortran_vec ();
-    T* data_out_pt = data_out.fortran_vec ();
-    p = 0;
-    for (i=0 ; i < n; i++) 
+  if (!error_state) 
     {
-      if (!cidx_u[i].empty ())
+      // Build the output matrices
+      L = octave_matrix_t (n, n, total_len_l);
+      U = octave_matrix_t (n, n, total_len_u);
+      for (i = 0; i <= n; i++)
+        L.cidx (i) = cidx_l[i];
+      for (i = 0; i < total_len_l; i++)
         {
-          it_list = cidx_u[i].begin ();
-          while (it_list != cidx_u[i].end ())
-            {
-              ridx_out_pt[p] = (*it_list).ridx; ;
-              data_out_pt[p] = (*it_list).data;
-              cidx_out_pt[p] = i;
-              it_list++;
-              p++;
-            }
+          L.ridx (i) = ridx_l[i];
+          L.data (i) = data_l[i];
         }
-    }
-    /**
-        printf("cidx: \n");
-        for (i = 0; i<total_len_u; i++)
-          printf("%d ", cidx_out_pt[i]);
-        printf("\n");
-        printf("ridx: \n");
-        for (i = 0; i<total_len_u; i++)
-          printf("%d ", ridx_out_pt[i]);
-        printf("\n");
-        printf("data: \n");
-        for (i = 0; i<total_len_u; i++)
-          printf("%f ", data_out_pt[i]);
-        printf("\n");
-        **/
-    U = octave_matrix_t (data_out, ridx_out, cidx_out, n, n);
-    U = U.transpose();
-    // Expand LIL format into CCS. L matrix.
-    cidx_out = Array<octave_idx_type> (dim_vector (total_len_l, 1));
-    ridx_out = Array<octave_idx_type> (dim_vector (total_len_l, 1));
-    data_out = Array<T> (dim_vector (total_len_l, 1));
-    cidx_out_pt = cidx_out.fortran_vec ();
-    ridx_out_pt = ridx_out.fortran_vec ();
-    data_out_pt = data_out.fortran_vec ();
-    p = 0;
-    for (i=0 ; i < n; i++) 
-    {
-      it_list = cidx_l[i].begin ();
-      while (it_list != cidx_l[i].end ())
+      for (i = 0; i <= n; i++)
+        U.cidx (i) = cidx_u[i];
+      for (i = 0; i < total_len_u; i++)
         {
-          ridx_out_pt[p] = (*it_list).ridx; ;
-          data_out_pt[p] = (*it_list).data;
-          cidx_out_pt[p] = i;
-          it_list++;
-          p++;
+          U.ridx (i) = ridx_u[i];
+          U.data (i) = data_u[i];
         }
+      U = U.transpose ();
     }
-    L = octave_matrix_t (data_out, ridx_out, cidx_out, n, n);
-  }
 }
 
-DEFUN_DLD (iluc, args, nargout, "-*- texinfo -*-")
+DEFUN_DLD (iluc, args, nargout, "-*- texinfo -*-\n\
+@deftypefn  {Loadable Function} {[@var{L}, @var{U}] =} iluc (@var{A})\n\
+@deftypefnx {Loadable Function} {[@var{L}, @var{U}] =} iluc (@var{A}, @var{droptol}, @var{milu})\n\
+\n\
+Computes the crout version incomplete LU-factorization (ILU) with threshold of @var{A}.\n\
+\n\
+NOTE: No pivoting is performed.\n\
+\n\
+@code{[@var{L}, @var{U}] = iluc (@var{A})} computes the default crout version\n\
+ILU-factorization with threshold ILUT of @var{A}, such that \
+@code{@var{L} * @var{U}} is an approximation of the square sparse matrix \
+@var{A}. This version of ILU algorithms is significantly faster than ILUT or ILU(0). \
+Parameter @code{@var{droptol}>=0} is the scalar double threshold. All elements \
+@code{x<=@var{droptol}} will be dropped in the factorization. Parameter @var{milu} = ['off'|'row'|'col'] \
+set if no row nor column sums are preserved, row sums are preserved or column sums \
+are preserved respectively.\n\
+\n\
+For a full description of ILUC behaviour and its options see ilu documentation.\n\
+\n\
+For more information about the algorithms themselves see:\n\
+\n\
+[1] Saad, Yousef: Iterative Methods for Sparse Linear Systems. Second Edition. \
+Minneapolis, Minnesota: Siam 2003.\n\
+\n\
+@seealso{ilu, ilu0, ilutp, ichol}\n\
+@end deftypefn")
 {
+
   octave_value_list retval;
-
   int nargin = args.length ();
-  std::string milu = "";
+  std::string milu;
   double droptol, thresh;
-  bool udiag;
 
- 
-
-  if (nargout > 3 || nargin < 1 || nargin > 5)
+  if (nargout != 2 || nargin < 1 || nargin > 3)
     {
       print_usage ();
       return retval;
     }
-    //That is really nasty, valid for input checked on ilu.m and called ilutp with 5 params.
-    //FIXME: Have to implement the apropiate checking.
-    droptol = args(2).double_value ();
-    milu = args (3).string_value ();
+
+  // To be matlab compatible 
+  if (args (0).is_empty ())
+    {
+      retval (0) = octave_value (SparseMatrix());
+      retval (1) = octave_value (SparseMatrix());
+      return retval;
+    }
+
+  if (args (0).is_scalar_type () || !args (0).is_sparse_type ())
+    error ("iluc: 1. parameter must be a sparse square matrix.");
+
+  if (! error_state && (nargin >= 2))
+    {
+      droptol = args (1).double_value ();
+      if (error_state || (droptol < 0) || ! args (1).is_real_scalar ())
+        error ("iluc: 2. parameter must be a positive real scalar.");
+    }
+
+  if (! error_state && (nargin == 3))
+    {
+      milu = args (2).string_value ();
+      if (error_state || !(milu == "row" || milu == "col" || milu == "off"))
+        error ("iluc: 3. parameter must be 'row', 'col' or 'off' character string.");
+    }
+
 
   if (! error_state)
     {
+      octave_value_list param_list;
       if (!args (0).is_complex_type ())
-      {
-        SparseMatrix sm_l = args (0).sparse_matrix_value ();
-        SparseMatrix sm_u = args (1).sparse_matrix_value ();
-        SparseMatrix U;
-        SparseMatrix L;
-        ilu_crout <SparseMatrix, double> (sm_l, sm_u, L, U, droptol, milu);
-        if (! error_state)
-          {
-            retval(0) = octave_value (L);
-            retval(1) = octave_value (U);
-          }
-      }
+        {
+          Array<double> cols_norm, rows_norm;
+          param_list.append (args (0).sparse_matrix_value ());
+          SparseMatrix sm_u =  feval ("triu", param_list)(0).sparse_matrix_value (); 
+          param_list.append (-1);
+          SparseMatrix sm_l =  feval ("tril", param_list)(0).sparse_matrix_value (); 
+          param_list (1) = "rows";
+          rows_norm = feval ("norm", param_list)(0).vector_value ();
+          param_list (1) = "cols";
+          cols_norm = feval ("norm", param_list)(0).vector_value ();
+          param_list.clear ();
+          SparseMatrix U;
+          SparseMatrix L;
+          ilu_crout <SparseMatrix, double> (sm_l, sm_u, L, U, cols_norm.fortran_vec (), 
+                                            rows_norm.fortran_vec (), droptol, milu);
+          if (! error_state)
+            {
+              param_list.append (octave_value (L.cols ()));
+              SparseMatrix eye = feval ("speye", param_list)(0).sparse_matrix_value ();
+              retval (0) = octave_value (L + eye);
+              retval (1) = octave_value (U);
+            }
+        }
       else
-      {
-        SparseComplexMatrix sm_l = args (0).sparse_complex_matrix_value ();
-        SparseComplexMatrix sm_u = args (1).sparse_complex_matrix_value ();
-        SparseComplexMatrix U;
-        SparseComplexMatrix L;
-        ilu_crout < SparseComplexMatrix, std::complex<double> > (sm_l, sm_u, L, U, std::complex<double> (droptol), milu);
-        if (! error_state)
-          {
-            retval(0) = octave_value (L);
-            retval(1) = octave_value (U);
-          }
-      }
+        {
+          Array<std::complex<double> > cols_norm, rows_norm;
+          param_list.append (args (0).sparse_complex_matrix_value ());
+          SparseComplexMatrix sm_u =  feval("triu", param_list)(0).sparse_complex_matrix_value (); 
+          param_list.append (-1);
+          SparseComplexMatrix sm_l =  feval("tril", param_list)(0).sparse_complex_matrix_value (); 
+          param_list (1) = "rows";
+          rows_norm = feval ("norm", param_list)(0).complex_vector_value ();
+          param_list (1) = "cols";
+          cols_norm = feval ("norm", param_list)(0).complex_vector_value ();
+          param_list.clear ();
+          SparseComplexMatrix U;
+          SparseComplexMatrix L;
+          ilu_crout < SparseComplexMatrix, Complex > (sm_l, sm_u, L, U, cols_norm.fortran_vec () , 
+                                                      rows_norm.fortran_vec (), Complex (droptol), milu);
+          if (! error_state)
+            {
+              param_list.append (octave_value (L.cols ()));
+              SparseComplexMatrix eye = feval ("speye", param_list)(0).sparse_complex_matrix_value ();
+              retval (0) = octave_value (L + eye);
+              retval (1) = octave_value (U);
+            }
+        }
+
 
     }
 
   return retval;
 }
+
+
+/* Test cases for complex numbers
+%!shared n_tiny, n_small, n_medium, n_large, A_tiny, A_small, A_medium, A_large
+%! n_tiny = 5;
+%! n_small = 40;
+%! n_medium = 600;
+%! n_large = 10000;
+%! A_tiny = spconvert([1 4 2 3 3 4 2 5; 1 1 2 3 4 4 5 5; 1 2 3 4 5 6 7 8]');
+%! A_tiny(1,1) += 1i;
+%! A_small = sprand(n_small, n_small, 1/n_small) + i * sprand(n_small, n_small, 1/n_small) + speye (n_small);
+%! A_medium = sprand(n_medium, n_medium, 1/n_medium) + i * sprand(n_medium, n_medium, 1/n_medium) + speye (n_medium);
+%! A_large = sprand(n_large, n_large, 1/n_large/10) + i * sprand(n_large, n_large, 1/n_large/10) + speye (n_large);
+%!# Input validation tests
+%!test 
+%!error [L,U] = iluc(A_tiny, -1);
+%!error [L,U] = iluc(A_tiny, [1,2]);
+%!error [L,U] = iluc(A_tiny, 2i);
+%!error [L,U] = iluc(A_tiny, 1, 'foo');
+%!error [L,U] = iluc(A_tiny, 1, '');
+%!error [L,U] = iluc(A_tiny, 1, 1);
+%!error [L,U] = iluc(A_tiny, 1, [1,2]);
+%! [L,U] = iluc ([]);
+%! assert (isempty (L), logical (1));
+%! assert (isempty (U), logical (1));
+%!error [L,U] = iluc (0+0i);
+%!error [L,U] = iluc (0i);
+%!error [L,U] = iluc (sparse (0+0i));
+%!error [L,U] = iluc (sparse (0i));
+%! [L,U] = iluc (sparse (2+0i));
+%! assert (L, sparse (1));
+%! assert (U, sparse (2));
+%! [L,U] = iluc (sparse (2+2i));
+%! assert (L, sparse (1));
+%! assert (U, sparse (2+2i));
+%! [L,U] = iluc (sparse (2i));
+%! assert (L, sparse (1));
+%! assert (U, sparse (2i));
+%!# Output tests
+%!test 
+%! [L,U] = iluc (A_tiny);
+%! assert (norm (A_tiny - L * U, "fro") / norm (A_tiny, "fro"), 0, n_tiny*eps);
+%!test 
+%! [L,U] = iluc (A_small);
+%! assert (norm (A_small - L * U, "fro") / norm (A_small, "fro"), 0, 1);
+%!test 
+%! [L,U] = iluc (A_medium);
+%! assert (norm (A_medium - L * U, "fro") / norm (A_medium, "fro"), 0, 1);
+%!test 
+%! [L,U] = iluc (A_large);
+%! assert (norm (A_large - L * U, "fro") / norm (A_large, "fro"), 0, 1);
+*/
+
+/* Test cases for real numbers.
+%!shared n_tiny, n_small, n_medium, n_large, A_tiny, A_small, A_medium, A_large
+%! n_tiny = 5;
+%! n_small = 40;
+%! n_medium = 600;
+%! n_large = 10000;
+%! A_tiny = spconvert ([1 4 2 3 3 4 2 5; 1 1 2 3 4 4 5 5; 1 2 3 4 5 6 7 8]');
+%! A_small = sprand (n_small, n_small, 1/n_small) + speye (n_small);
+%! A_medium = sprand (n_medium, n_medium, 1/n_medium) + speye (n_medium);
+%! A_large = sprand (n_large, n_large, 1/n_large/10) + speye (n_large);
+%!test 
+%! [L,U] = iluc ([]);
+%! assert (isempty (L), logical (1));
+%! assert (isempty (U), logical (1));
+%!error [L,U] = iluc (0);
+%!error [L,U] = iluc (sparse (0));
+%!test 
+%! [L,U] = iluc (sparse (2));
+%! assert (L, sparse (1));
+%! assert (U, sparse (2));
+%!test 
+%! [L,U] = iluc (A_tiny);
+%! assert (norm (A_tiny - L * U, "fro") / norm (A_tiny, "fro"), 0, n_tiny*eps);
+%!test 
+%! [L,U] = iluc (A_small);
+%! assert (norm (A_small - L * U, "fro") / norm (A_small, "fro"), 0, 1);
+%!test 
+%! [L,U] = iluc (A_medium);
+%! assert (norm (A_medium - L * U, "fro") / norm (A_medium, "fro"), 0, 1);
+%!test 
+%! [L,U] = iluc (A_large);
+%! assert (norm (A_large - L * U, "fro") / norm (A_large, "fro"), 0, 1);
+*/
