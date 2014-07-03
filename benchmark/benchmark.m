@@ -1,6 +1,6 @@
 %a=load('-ascii','matlab_matrix_5000.data');
 
-%a=load('-ascii','matlab_matrix_2000.data');
+a=load('-ascii','matlab_matrix_2000.data');
 %printf("acabo");
 %fflush(stdout);
 %a = a(1:9,1:9);
@@ -30,14 +30,15 @@
 %Diag
 %a=[0 0 4 3 1; 5 1 2.3 2 4.5; 0 0 0 2 1;0 0 8 0 2.2; 0 0 9 9 1 ];
 %ICHOL MATRICES
-a = [10 2 3 4 5; 0 20 3 0 2; 2 1 15 0 0; 2 5 8 9 0; 0 0 1 3 9];
+%a = [10 2 3 4 5; 0 20 3 0 2; 2 1 15 0 0; 2 5 8 9 0; 0 0 1 3 9];
 a = sparse(a);
-setup.droptol = 0.5;
-setup.thresh = 0.2;
+setup.droptol = 0.01;
+setup.thresh = 0;
 setup.udiag = 0;
-setup.milu = 'col';
+setup.milu = 'off';
 
 setup.type = 'ilutp';
+
 tic
 %s=ICHOL0(a);
 %s=ilu0(a);
