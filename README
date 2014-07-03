@@ -6,10 +6,8 @@ Just type "make" in the root directory. Binaries will show up inside it.
 
 2. RUNNING THE M-SCRIPTS AND BINARIES
 
-Go inside "benchmark" directory and run "run_octave.s" bash script. Inside octave 
-type "benchmark". That will show the execution time. L, U and P are the matrices to explore after 
-executing the algorithm. To change the function and matrix for testing open the "benchmark.m"
-file and uncomment and comment lines as desired.
+In the root directory execute the "run_octave.sh script and call functions as normal.
+
 
 
 
