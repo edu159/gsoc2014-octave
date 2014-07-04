@@ -39,9 +39,7 @@ void ilu_0 (octave_matrix_t& sm, const std::string milu = "off") {
   T tl, r;
 
   char opt;
-  #define ROW 1 // maybe an enum? http://en.cppreference.com/w/cpp/language/enum
-  #define COL 2
-  #define OFF 0
+  enum {OFF, ROW, COL};
   if (milu == "row")
     {
       opt = ROW;
@@ -130,9 +128,9 @@ Computes the incomplete LU-factorization (ILU) with 0-order level of fill of \
 \n\
 @code{[@var{L}, @var{U}] = ilu0 (@var{A})} computes the zero fill-in ILU-\
 factorization ILU(0) of @var{A}, such that @code{@var{L} * @var{U}} is an \
-approximation of the square sparse matrix @var{A}. Parameter @var{milu} = ['off'|'row'|'col'] \
-set if no row nor column sums are preserved, row sums are preserved or column sums \
-are preserved respectively.\n\
+approximation of the square sparse matrix @var{A}. Parameter @var{milu} = \
+['off'|'row'|'col'] set if no row nor column sums are preserved, row sums \
+are preserved or column sums are preserved respectively.\n\
 \n\
 For a full description of ILU0 and its options see ilu documentation.\n\
 \n\
@@ -191,10 +189,10 @@ Minneapolis, Minnesota: Siam 2003.\n\
               param_list.append (sm);
               retval (1) = octave_value (
                 feval ("triu", param_list)(0).sparse_matrix_value ()); 
-              param_list.append (-1); // what is this?
               SparseMatrix eye = feval ("speye",
                 octave_value_list (
                   octave_value (sm.cols ())))(0).sparse_matrix_value ();
+              param_list.append (-1);
               retval (0) = octave_value (
                 eye + feval ("tril", param_list)(0).sparse_matrix_value ()); 
 
@@ -209,10 +207,10 @@ Minneapolis, Minnesota: Siam 2003.\n\
               param_list.append (sm);
               retval (1) = octave_value (
                 feval ("triu", param_list)(0).sparse_complex_matrix_value ()); 
-              param_list.append (-1); // same here?
               SparseComplexMatrix eye = feval ("speye",
                 octave_value_list (
                   octave_value (sm.cols ())))(0).sparse_complex_matrix_value ();
+              param_list.append (-1);
               retval (0) = octave_value (eye +
                 feval ("tril", param_list)(0).sparse_complex_matrix_value ()); 
            }

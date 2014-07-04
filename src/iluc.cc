@@ -195,7 +195,7 @@ void ilu_crout (octave_matrix_t& sm_l, octave_matrix_t& sm_u,
       // arrays working as lists cols_list and rows_list are filled with indexes
       // pointing to Ufirst and Lfirst respectively.
       // TODO: Maybe the -1 indicating in Ufirst and Lfirst, that no elements
-      // have to be considered in a certain column or row next iteration, can
+      // have to be considered in a certain column or row in next iteration, can
       // be removed. It feels safer to me using such an indicator.
       if (k < (n - 1))
         {
@@ -279,7 +279,8 @@ void ilu_crout (octave_matrix_t& sm_l, octave_matrix_t& sm_u,
 
 DEFUN_DLD (iluc, args, nargout, "-*- texinfo -*-\n\
 @deftypefn  {Loadable Function} {[@var{L}, @var{U}] =} iluc (@var{A})\n\
-@deftypefnx {Loadable Function} {[@var{L}, @var{U}] =} iluc (@var{A}, @var{droptol}, @var{milu})\n\
+@deftypefnx {Loadable Function} {[@var{L}, @var{U}] =} iluc (@var{A}, @var{droptol}, \
+@var{milu})\n\
 \n\
 Computes the crout version incomplete LU-factorization (ILU) with threshold of @var{A}.\n\
 \n\
@@ -290,9 +291,9 @@ ILU-factorization with threshold ILUT of @var{A}, such that \
 @code{@var{L} * @var{U}} is an approximation of the square sparse matrix \
 @var{A}. This version of ILU algorithms is significantly faster than ILUT or ILU(0). \
 Parameter @code{@var{droptol}>=0} is the scalar double threshold. All elements \
-@code{x<=@var{droptol}} will be dropped in the factorization. Parameter @var{milu} = ['off'|'row'|'col'] \
-set if no row nor column sums are preserved, row sums are preserved or column sums \
-are preserved respectively.\n\
+@code{x<=@var{droptol}} will be dropped in the factorization. Parameter @var{milu} \
+= ['off'|'row'|'col'] set if no row nor column sums are preserved, row sums are \
+preserved or column sums are preserved respectively.\n\
 \n\
 For a full description of ILUC behaviour and its options see ilu documentation.\n\
 \n\
@@ -373,9 +374,11 @@ Minneapolis, Minnesota: Siam 2003.\n\
         {
           Array<std::complex<double> > cols_norm, rows_norm;
           param_list.append (args (0).sparse_complex_matrix_value ());
-          SparseComplexMatrix sm_u =  feval("triu", param_list)(0).sparse_complex_matrix_value (); 
+          SparseComplexMatrix sm_u =  feval("triu", 
+                                            param_list)(0).sparse_complex_matrix_value (); 
           param_list.append (-1);
-          SparseComplexMatrix sm_l =  feval("tril", param_list)(0).sparse_complex_matrix_value (); 
+          SparseComplexMatrix sm_l =  feval("tril", 
+                                            param_list)(0).sparse_complex_matrix_value (); 
           param_list (1) = "rows";
           rows_norm = feval ("norm", param_list)(0).complex_vector_value ();
           param_list (1) = "cols";
@@ -383,12 +386,14 @@ Minneapolis, Minnesota: Siam 2003.\n\
           param_list.clear ();
           SparseComplexMatrix U;
           SparseComplexMatrix L;
-          ilu_crout < SparseComplexMatrix, Complex > (sm_l, sm_u, L, U, cols_norm.fortran_vec () , 
-                                                      rows_norm.fortran_vec (), Complex (droptol), milu);
+          ilu_crout < SparseComplexMatrix, Complex > 
+                    (sm_l, sm_u, L, U, cols_norm.fortran_vec () , 
+                     rows_norm.fortran_vec (), Complex (droptol), milu);
           if (! error_state)
             {
               param_list.append (octave_value (L.cols ()));
-              SparseComplexMatrix eye = feval ("speye", param_list)(0).sparse_complex_matrix_value ();
+              SparseComplexMatrix eye = feval ("speye", 
+                                                param_list)(0).sparse_complex_matrix_value ();
               retval (0) = octave_value (L + eye);
               retval (1) = octave_value (U);
             }
