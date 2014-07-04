@@ -1,6 +1,5 @@
 /**
  * Copyright (C) 2014 Eduardo Ramos Fernández <eduradical951@gmail.com>
- * Copyright (C) 2014 Kai T. Ohlhus <k.ohlhus@gmail.com>
  *
  * This file is part of Octave.
  *
@@ -22,8 +21,10 @@
 #include <octave/parse.h>
 
 template <typename octave_matrix_t, typename T>
-void ilu_crout (octave_matrix_t& sm_l, octave_matrix_t& sm_u, octave_matrix_t& L, octave_matrix_t& U, 
-                T* cols_norm, T* rows_norm, const T droptol = 0, const  std::string milu = "off")
+void ilu_crout (octave_matrix_t& sm_l, octave_matrix_t& sm_u,
+                octave_matrix_t& L, octave_matrix_t& U, T* cols_norm,
+                T* rows_norm, const T droptol = 0,
+                const std::string milu = "off")
 {
 
   // Map the strings into chars to faster comparation inside loops
@@ -38,9 +39,10 @@ void ilu_crout (octave_matrix_t& sm_l, octave_matrix_t& sm_u, octave_matrix_t& L
   else
     opt = OFF;
 
-  
+
   const octave_idx_type n = sm_u.cols ();
   sm_u = sm_u.transpose ();
+
   // Extract pointers to the arrays for faster access inside loops
   octave_idx_type* cidx_in_u = sm_u.cidx ();
   octave_idx_type* ridx_in_u = sm_u.ridx ();
@@ -57,6 +59,7 @@ void ilu_crout (octave_matrix_t& sm_l, octave_matrix_t& sm_u, octave_matrix_t& L
   octave_idx_type* ridx_l = ridx_out_l.fortran_vec ();
   Array <T> data_out_l (dim_vector ((n*n + n) / 2, 1));
   T* data_l = data_out_l.fortran_vec ();
+
   // U output arrays
   Array <octave_idx_type> ridx_out_u (dim_vector ((n*n + n) / 2, 1));
   octave_idx_type* ridx_u = ridx_out_u.fortran_vec ();
@@ -94,20 +97,20 @@ void ilu_crout (octave_matrix_t& sm_l, octave_matrix_t& sm_u, octave_matrix_t& L
     {
       // Load the working column and working row 
       for (i = cidx_in_l[k]; i < cidx_in_l[k+1]; i++)
-           w_data_l[ridx_in_l[i]] = data_in_l[i];
+        w_data_l[ridx_in_l[i]] = data_in_l[i];
 
       for (i = cidx_in_u[k]; i < cidx_in_u[k+1]; i++)
-          w_data_u[ridx_in_u[i]] = data_in_u[i];
+        w_data_u[ridx_in_u[i]] = data_in_u[i];
 
       // Update U working row
       for (j = 0; j < rows_list_len; j++)
         {
           if ((Ufirst[rows_list[j]] != -1))
-              for (jj = Ufirst[rows_list[j]]; jj < cidx_u[rows_list[j]+1]; jj++)
-                {
-                  jrow = ridx_u[jj];
-                  w_data_u[jrow] -= data_u[jj] * data_l[Lfirst[rows_list[j]]];
-                }
+            for (jj = Ufirst[rows_list[j]]; jj < cidx_u[rows_list[j]+1]; jj++)
+              {
+                jrow = ridx_u[jj];
+                w_data_u[jrow] -= data_u[jj] * data_l[Lfirst[rows_list[j]]];
+              }
         }
       // Update L working column
       for (j = 0; j < cols_list_len; j++)
@@ -117,7 +120,6 @@ void ilu_crout (octave_matrix_t& sm_l, octave_matrix_t& sm_u, octave_matrix_t& L
               {
                 jrow = ridx_l[jj];
                 w_data_l[jrow] -= data_l[jj] * data_u[Ufirst[cols_list[j]]];
-
               }
         }
 
@@ -137,7 +139,6 @@ void ilu_crout (octave_matrix_t& sm_l, octave_matrix_t& sm_u, octave_matrix_t& L
         {
           if (w_data_u[i] != zero)
             {
-               
               if (std::abs (w_data_u[i]) < (droptol * rows_norm[k]))
                 {
                   if (opt == ROW)
@@ -190,12 +191,12 @@ void ilu_crout (octave_matrix_t& sm_l, octave_matrix_t& sm_u, octave_matrix_t& L
 
       // The tricky part of the algorithm. The arrays pointing to the first
       // working element of each column in the next iteration (Lfirst) or
-      // the first working element of each row (Ufirst) are updated. Also the 
+      // the first working element of each row (Ufirst) are updated. Also the
       // arrays working as lists cols_list and rows_list are filled with indexes
       // pointing to Ufirst and Lfirst respectively.
-      // TODO: Maybe the -1 indicating in Ufirst and Lfirst, that no elements 
-      // have to be considered in a certain column or row next iteration, can be 
-      // removed. It feels safer to me using such an indicator.
+      // TODO: Maybe the -1 indicating in Ufirst and Lfirst, that no elements
+      // have to be considered in a certain column or row next iteration, can
+      // be removed. It feels safer to me using such an indicator.
       if (k < (n - 1))
         {
           if (w_len_u > 0)
@@ -253,7 +254,7 @@ void ilu_crout (octave_matrix_t& sm_l, octave_matrix_t& sm_u, octave_matrix_t& L
         }
     }
 
-  if (!error_state) 
+  if (!error_state)
     {
       // Build the output matrices
       L = octave_matrix_t (n, n, total_len_l);
@@ -338,8 +339,8 @@ Minneapolis, Minnesota: Siam 2003.\n\
       milu = args (2).string_value ();
       if (error_state || !(milu == "row" || milu == "col" || milu == "off"))
         error ("iluc: 3. parameter must be 'row', 'col' or 'off' character string.");
+      // again resolve MILU to enum already here?
     }
-
 
   if (! error_state)
     {

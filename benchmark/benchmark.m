@@ -1,6 +1,6 @@
 %a=load('-ascii','matlab_matrix_5000.data');
 
-a=load('-ascii','matlab_matrix_2000.data');
+a=load('-ascii','matlab_matrix_400.data');
 %printf("acabo");
 %fflush(stdout);
 %a = a(1:9,1:9);
@@ -38,6 +38,8 @@ setup.udiag = 0;
 setup.milu = 'off';
 
 setup.type = 'ilutp';
+
+cd ..
 
 tic
 %s=ICHOL0(a);

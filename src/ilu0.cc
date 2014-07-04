@@ -1,6 +1,5 @@
 /**
  * Copyright (C) 2014 Eduardo Ramos Fernández <eduradical951@gmail.com>
- * Copyright (C) 2014 Kai T. Ohlhus <k.ohlhus@gmail.com>
  *
  * This file is part of Octave.
  *
@@ -21,14 +20,17 @@
 #include <octave/oct.h>
 #include <octave/parse.h>
 
-
-// That function implements the IKJ and JKI variants of gaussian elimination to perform the ILUTP decomposition.
-// The behaviour is controlled by milu parameter. If milu = ['off'|'col'] the JKI version is performed taking
-// advantage of CCS format of the input matrix. If milu = 'row' the input matrix has to be transposed to obtain 
-// the equivalent CRS structure so we can work efficiently with rows. In this case IKJ version is used.
+/* 
+ * That function implements the IKJ and JKI variants of gaussian elimination to
+ * perform the ILUTP decomposition. The behaviour is controlled by milu
+ * parameter. If milu = ['off'|'col'] the JKI version is performed taking
+ * advantage of CCS format of the input matrix. If milu = 'row' the input matrix
+ * has to be transposed to obtain the equivalent CRS structure so we can work
+ * efficiently with rows. In this case IKJ version is used.
+ */
 
 template <typename octave_matrix_t, typename T>
-void ilu_0 (octave_matrix_t& sm, const  std::string milu = "off") {
+void ilu_0 (octave_matrix_t& sm, const std::string milu = "off") {
 
   const octave_idx_type n = sm.cols ();
   OCTAVE_LOCAL_BUFFER (octave_idx_type, iw, n);
@@ -37,7 +39,7 @@ void ilu_0 (octave_matrix_t& sm, const  std::string milu = "off") {
   T tl, r;
 
   char opt;
-  #define ROW 1
+  #define ROW 1 // maybe an enum? http://en.cppreference.com/w/cpp/language/enum
   #define COL 2
   #define OFF 0
   if (milu == "row")
@@ -67,7 +69,7 @@ void ilu_0 (octave_matrix_t& sm, const  std::string milu = "off") {
       r = 0;
       j = j1;
       jrow = ridx[j];
-      while (jrow < k && j <= j2) 
+      while ((jrow < k) && (j <= j2)) 
         {
           if (opt == ROW)
             {
@@ -97,20 +99,20 @@ void ilu_0 (octave_matrix_t& sm, const  std::string milu = "off") {
       if(opt != OFF)
         data[uptr[k]] -= r;
       if (opt != ROW)
-        for (jj = uptr[k] + 1 ; jj < cidx[k+1]; jj++)
-          data[jj] = data[jj] / data[uptr[k]];
+        for (jj = uptr[k] + 1; jj < cidx[k+1]; jj++)
+          data[jj] /=  data[uptr[k]];
       if (k != jrow)
         {
           error ("ilu0: Your input matrix has a zero in the diagonal.");
           break;
         }
 
-      if (data[j] == T (0))
+      if (data[j] == T(0))
         {
           error ("ilu0: There is a pivot equal to zero.");
           break;
         }
-      for(i = j1; i <= j2 ; i++)
+      for(i = j1; i <= j2; i++)
         iw[ridx[i]] = -1;
     }
   if (opt == ROW)
@@ -168,27 +170,33 @@ Minneapolis, Minnesota: Siam 2003.\n\
     {
       milu = args (1).string_value ();
       if (error_state || !(milu == "row" || milu == "col" || milu == "off"))
-        error ("iluc: 3. parameter must be 'row', 'col' or 'off' character string.");
+        error (
+          "iluc: 3. parameter must be 'row', 'col' or 'off' character string.");
+      // maybe resolve milu to a numerical value / enum type already here!
     }
 
 
-  if (! error_state)
+  if (!error_state)
     {
-      // In ILU0 algorithm the zero-pattern of the input matrix is preserved so it's 
-      // structure does not change during the algorithm. The same input matrix is used 
-      // to build the output matrix due to that fact.
+      // In ILU0 algorithm the zero-pattern of the input matrix is preserved so
+      // it's structure does not change during the algorithm. The same input
+      // matrix is used to build the output matrix due to that fact.
       octave_value_list param_list;
       if (!args (0).is_complex_type ())
         {
           SparseMatrix sm = args (0).sparse_matrix_value ();
           ilu_0 <SparseMatrix, double> (sm, milu);
-          if (! error_state)
+          if (!error_state)
             {
               param_list.append (sm);
-              retval (1) = octave_value (feval ("triu", param_list)(0).sparse_matrix_value ()); 
-              param_list.append (-1);
-              SparseMatrix eye = feval ("speye", octave_value_list (octave_value (sm.cols ())))(0).sparse_matrix_value ();
-              retval (0) = octave_value (eye + feval ("tril", param_list)(0).sparse_matrix_value ()); 
+              retval (1) = octave_value (
+                feval ("triu", param_list)(0).sparse_matrix_value ()); 
+              param_list.append (-1); // what is this?
+              SparseMatrix eye = feval ("speye",
+                octave_value_list (
+                  octave_value (sm.cols ())))(0).sparse_matrix_value ();
+              retval (0) = octave_value (
+                eye + feval ("tril", param_list)(0).sparse_matrix_value ()); 
 
             }
         }
@@ -196,13 +204,17 @@ Minneapolis, Minnesota: Siam 2003.\n\
         {
           SparseComplexMatrix sm = args (0).sparse_complex_matrix_value ();
           ilu_0 <SparseComplexMatrix, Complex> (sm, milu);
-          if (! error_state)
+          if (!error_state)
             {
               param_list.append (sm);
-              retval (1) = octave_value (feval ("triu", param_list)(0).sparse_complex_matrix_value ()); 
-              param_list.append (-1);
-              SparseComplexMatrix eye = feval ("speye", octave_value_list (octave_value (sm.cols ())))(0).sparse_complex_matrix_value ();
-              retval (0) = octave_value (eye + feval ("tril", param_list)(0).sparse_complex_matrix_value ()); 
+              retval (1) = octave_value (
+                feval ("triu", param_list)(0).sparse_complex_matrix_value ()); 
+              param_list.append (-1); // same here?
+              SparseComplexMatrix eye = feval ("speye",
+                octave_value_list (
+                  octave_value (sm.cols ())))(0).sparse_complex_matrix_value ();
+              retval (0) = octave_value (eye +
+                feval ("tril", param_list)(0).sparse_complex_matrix_value ()); 
            }
         }
 
@@ -257,9 +269,12 @@ Minneapolis, Minnesota: Siam 2003.\n\
 %! n_large = 10000;
 %! A_tiny = spconvert([1 4 2 3 3 4 2 5; 1 1 2 3 4 4 5 5; 1 2 3 4 5 6 7 8]');
 %! A_tiny(1,1) += 1i;
-%! A_small = sprand(n_small, n_small, 1/n_small) + i * sprand(n_small, n_small, 1/n_small) + speye (n_small);
-%! A_medium = sprand(n_medium, n_medium, 1/n_medium) + i * sprand(n_medium, n_medium, 1/n_medium) + speye (n_medium);
-%! A_large = sprand(n_large, n_large, 1/n_large/10) + i * sprand(n_large, n_large, 1/n_large/10) + speye (n_large);
+%! A_small = sprand(n_small, n_small, 1/n_small) + ...
+%!   i * sprand(n_small, n_small, 1/n_small) + speye (n_small);
+%! A_medium = sprand(n_medium, n_medium, 1/n_medium) + ...
+%!   i * sprand(n_medium, n_medium, 1/n_medium) + speye (n_medium);
+%! A_large = sprand(n_large, n_large, 1/n_large/10) + ...
+%!   i * sprand(n_large, n_large, 1/n_large/10) + speye (n_large);
 %!test 
 %! [L,U] = ilu0 ([]);
 %! assert (isempty (L), logical (1));

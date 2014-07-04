@@ -1,5 +1,5 @@
 ## Copyright (C) 2013 Kai T. Ohlhus <k.ohlhus@gmail.com>
-## Copyright (C) 2014 Eduardo Ramos Fernández <k.ohlhus@gmail.com>
+## Copyright (C) 2014 Eduardo Ramos Fernández <eduradical951@gmail.com>
 ##
 ## 
 ## This file is part of Octave.
@@ -163,9 +163,9 @@ function [L, U, P] = ilu (A, setup)
   endif
 
   % Check input matrix
-   if (~issparse(A) || ~issquare (A))
+  if (~issparse(A) || ~issquare (A))
     error ("ilu: Input A must be a sparse square matrix.");
-   endif
+  endif
 
   % Check input structure, otherwise set default values
   if (nargin == 2)
@@ -303,5 +303,5 @@ endfunction
 %! setup.droptol = 0;
 %! [L1,U1] = ilu (A, setup);
 %! [L2,U2] = ilu (A);
-%! # assert (norm (L1 - L2, 'fro') / norm (L1, 'fro'), 0, eps);
-%! # assert (norm (U1 - U2, 'fro') / norm (U1, 'fro'), 0, eps);
+%! assert (norm (L1 - L2, 'fro') / norm (L1, 'fro'), 0, eps);
+%! assert (norm (U1 - U2, 'fro') / norm (U1, 'fro'), 0, eps);

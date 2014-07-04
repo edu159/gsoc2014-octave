@@ -1,6 +1,5 @@
 /**
  * Copyright (C) 2014 Eduardo Ramos Fernández <eduradical951@gmail.com>
- * Copyright (C) 2014 Kai T. Ohlhus <k.ohlhus@gmail.com>
  *
  * This file is part of Octave.
  *
@@ -56,10 +55,10 @@ void ilu_tp (octave_matrix_t& sm, octave_matrix_t& L, octave_matrix_t& U, Array 
   octave_idx_type* ridx_in = sm.ridx ();
   T* data_in = sm.data ();
   octave_idx_type jrow, i, j, k, jj, c, total_len_l, total_len_u, p_perm, res, max_ind;
-  T tl, aux, maximun;
+  T tl, aux, maximum;
 
   // Data for L
-  // FIXME: ridx_l/u and data_l/u are fixed to the maximun possible ((n^2+n)/2)
+  // FIXME: ridx_l/u and data_l/u are fixed to the maximum possible ((n^2+n)/2)
   //        that can be enhanced expanding a vector with an apropiate policy
   Array <octave_idx_type> cidx_out_l (dim_vector (n + 1,1));
   octave_idx_type* cidx_l = cidx_out_l.fortran_vec ();
@@ -161,14 +160,15 @@ void ilu_tp (octave_matrix_t& sm, octave_matrix_t& L, octave_matrix_t& U, Array 
                 }
 
                 // Drop element from the U part in IKJ and L part in JKI variant (milu = [col|off])
-                if (std::abs (w_data[jrow]) < (droptol * cols_norm[k]) && (w_data[jrow] != zero))
+                if ((std::abs (w_data[jrow]) < (droptol * cols_norm[k])) 
+                    && (w_data[jrow] != zero))
                   {
                     if (opt == COL)
                       total_sum += partial_col_sum;
                     else if (opt == ROW)
                       total_sum += partial_row_sum;
                     w_data[jrow] = zero;
-                    it2 = it;;
+                    it2 = it;
                     it++;
                     iw_u.erase (it2);
                     jrow = *it;
@@ -183,16 +183,16 @@ void ilu_tp (octave_matrix_t& sm, octave_matrix_t& L, octave_matrix_t& U, Array 
         }
 
       // Search for the pivot and update iw_l and iw_u if the pivot is not the diagonal element
-      if ((thresh) > zero && (k <(n-1)))
+      if ((thresh > zero) && (k < (n-1)))
         {
-          maximun =std::abs (w_data[k]) / thresh;
+          maximum = std::abs (w_data[k]) / thresh;
           max_ind = perm[k];
           for (it = iw_l.begin (); it != iw_l.end (); ++it) 
             {
               p_perm = iperm[*it];
-              if (std::abs (w_data[p_perm]) > maximun)
+              if (std::abs (w_data[p_perm]) > maximum)
                 {
-                  maximun = std::abs (w_data[p_perm]);
+                  maximum = std::abs (w_data[p_perm]);
                   max_ind = *it;
                   it2 = it; 
                 }
@@ -278,14 +278,14 @@ void ilu_tp (octave_matrix_t& sm, octave_matrix_t& L, octave_matrix_t& U, Array 
       // Expand working vector into U.
       w_len_u = 0;
       for (it = iw_u.begin (); it != iw_u.end (); ++it)
-      {
-        if (w_data[*it] != zero)
         {
-          data_u[total_len_u + w_len_u] = w_data[*it];
-          ridx_u[total_len_u + w_len_u] = *it;
-          w_len_u++;
+          if (w_data[*it] != zero)
+            {
+              data_u[total_len_u + w_len_u] = w_data[*it];
+              ridx_u[total_len_u + w_len_u] = *it;
+              w_len_u++;
+            }
         }
-      }
       total_len_u += w_len_u;
       if (opt == ROW)
         uptr[k] = total_len_u -1;
@@ -294,29 +294,26 @@ void ilu_tp (octave_matrix_t& sm, octave_matrix_t& L, octave_matrix_t& U, Array 
       // Expand working vector into L.
       w_len_l = 0;
       for (it = iw_l.begin (); it != iw_l.end (); ++it)
-      {
-        p_perm = iperm[*it];
-        if (w_data[p_perm] != zero)
         {
-          data_l[total_len_l + w_len_l] = w_data[p_perm];
-          ridx_l[total_len_l + w_len_l] = *it;
-          w_len_l++;
+          p_perm = iperm[*it];
+          if (w_data[p_perm] != zero)
+            {
+              data_l[total_len_l + w_len_l] = w_data[p_perm];
+              ridx_l[total_len_l + w_len_l] = *it;
+              w_len_l++;
+            }
         }
-      }
       total_len_l += w_len_l;
       cidx_l[k+1] = cidx_l[k] - cidx_l[0] + w_len_l;
 
       // Clear the auxiliar data structures
-      for (i=0; i < n; i++)
-        {
+      for (i = 0; i < n; i++)
           w_data[i] = 0;
-        }
       iw_l.clear ();
       iw_u.clear ();
-         
     }
 
-  if (!error_state) 
+  if (!error_state)
     {
       octave_matrix_t *L_ptr; 
       octave_matrix_t *U_ptr;
@@ -340,7 +337,6 @@ void ilu_tp (octave_matrix_t& sm, octave_matrix_t& L, octave_matrix_t& U, Array 
           U = octave_matrix_t (n, n, total_len_u);
         }
 
-
       for (i = 0; i <= n; i++)
         {
           L_ptr->cidx (i) = cidx_l[i];
@@ -349,7 +345,7 @@ void ilu_tp (octave_matrix_t& sm, octave_matrix_t& L, octave_matrix_t& U, Array 
             U_ptr->cidx (i) -= i;
         }
 
-      for (octave_idx_type i = 0 ; i < n; i++) 
+      for (octave_idx_type i = 0; i < n; i++) 
         {
           diag.elem (i,i) = data_u[uptr[i]];
           j = cidx_l[i];
@@ -467,6 +463,7 @@ Minneapolis, Minnesota: Siam 2003.\n\
       milu = args (3).string_value ();
       if (error_state || !(milu == "row" || milu == "col" || milu == "off"))
         error ("ilutp: 3. parameter must be 'row', 'col' or 'off' character string.");
+      // resolve milu to enum already here?
     }
 
   if (! error_state && (nargin == 5))
@@ -493,7 +490,7 @@ Minneapolis, Minnesota: Siam 2003.\n\
           Array <octave_idx_type> perm (dim_vector (sm.cols (), 1)); 
           SparseMatrix U;
           SparseMatrix L;
-          ilu_tp <SparseMatrix, double> (sm, L, U, perm, rc_norm.fortran_vec (), 
+          ilu_tp <SparseMatrix, double> (sm, L, U, perm, rc_norm.fortran_vec (),
                                          droptol, thresh, milu, udiag);
           if (! error_state)
             {
