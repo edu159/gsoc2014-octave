@@ -98,8 +98,8 @@ void ichol_t (const octave_matrix_t& sm, octave_matrix_t& L, const T* cols_norm,
   else
     opt = OFF;
 
-clock_t t_i, t_f, t_ii, t_ff; 
-double time_spent1, time_spent2;
+//clock_t t_i, t_f, t_ii, t_ff; 
+//double time_spent1, time_spent2;
 
   octave_idx_type* cidx_in = sm.cidx ();
   octave_idx_type* ridx_in = sm.ridx ();
@@ -132,8 +132,8 @@ double time_spent1, time_spent2;
     }
   Llist_len = 0;
   total_len = 0;
-  time_spent1 = 0;
-  time_spent2 = 0;
+  //time_spent1 = 0;
+  //time_spent2 = 0;
   for (k = 0; k < n; k++)
     {
     //  printf("k: %d\n", k);
@@ -150,7 +150,7 @@ double time_spent1, time_spent2;
           jrow = Llist[j];
         }
 
-      t_i = clock ();
+      //t_i = clock ();
       if ((max_len - total_len) < n)
         {
           max_len += (0.1 * max_len) > n ? 0.1 * max_len : n;
@@ -159,8 +159,8 @@ double time_spent1, time_spent2;
           ridx_out_l.resize (dim_vector (max_len, 1));
           ridx_l = ridx_out_l.fortran_vec ();
         }
-      t_f = clock ();
-      time_spent1 += (double) (t_f - t_i) /CLOCKS_PER_SEC;
+    //  t_f = clock ();
+     // time_spent1 += (double) (t_f - t_i) /CLOCKS_PER_SEC;
       data_l[total_len] = w_data[k];
       ridx_l[total_len] = k;
       w_len = 1;
@@ -202,7 +202,7 @@ double time_spent1, time_spent2;
         data_l[jj] /=  data_l[total_len];
       total_len += w_len;
       cidx_l[k+1] = cidx_l[k] - cidx_l[0] + w_len;
-      t_ii = clock ();
+     // t_ii = clock ();
       if (k < (n - 1))
         {
           Llist_len = 0;
@@ -226,11 +226,11 @@ double time_spent1, time_spent2;
                 }
             }
         }
-      t_ff = clock ();
-      time_spent2 += (double) (t_ff - t_ii) /CLOCKS_PER_SEC;
+     // t_ff = clock ();
+      //time_spent2 += (double) (t_ff - t_ii) /CLOCKS_PER_SEC;
     }
-      printf ("Time1: %f\n", time_spent1);
-      printf ("Time2: %f\n", time_spent2);
+     // printf ("Time1: %f\n", time_spent1);
+     // printf ("Time2: %f\n", time_spent2);
   if (!error_state)
     {
       // Build the output matrices

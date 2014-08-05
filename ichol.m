@@ -271,13 +271,6 @@ endfunction
 %!error ichol (sparse (-1));
 %!error ichol (sparse (-1));
 %!
-%%!test
-%%! assert (ichol (sparse (1)), sparse (1));
-%%! assert (ichol (sparse (4)), sparse (2));
-%%! assert (ichol (sparse (1 + 1i)), sparse (1));
-%%! assert (ichol (sparse (1 - 1i)), sparse (1));
-%%! assert (ichol (sparse (2 + 2i)), sparse (sqrt (2)));
-%%!
 %!test
 %! opts.type = "nofill";
 %! opts.michol = "off";
@@ -292,12 +285,12 @@ endfunction
 %! L = ichol (A2, opts);
 %! assert (norm (A2 - L * L', 'fro') / norm (A2, 'fro'), 0.06, 0.01);
 %!
-%!test
-%! opts.type = "nofill";
-%! opts.michol = "off";
-%! opts.shape = "upper";
-%! U = ichol (A1, opts);
-%! assert (norm (A1 - U' * U, 'fro') / norm (A1, 'fro'), 0.01, 0.01);
+%%!test
+%%! opts.type = "nofill";
+%%! opts.michol = "off";
+%%! opts.shape = "upper";
+%%! U = ichol (A1, opts);
+%%! assert (norm (A1 - U' * U, 'fro') / norm (A1, 'fro'), 0.01, 0.01);
 %!
 %!test
 %! opts.type = "nofill";
