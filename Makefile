@@ -8,7 +8,7 @@ SRC_DIR=src
 CPPFLAGS= -g
 
 # Files to compile
-OCT_FILES=ilu0.oct ilutp.oct iluc.oct
+OCT_FILES=ilu0.oct ilutp.oct iluc.oct ichol0.oct icholt.oct
 
 .SUFFIXES: .oct
 .PHONY: benchmark

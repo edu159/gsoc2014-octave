@@ -169,7 +169,7 @@ Minneapolis, Minnesota: Siam 2003.\n\
       milu = args (1).string_value ();
       if (error_state || !(milu == "row" || milu == "col" || milu == "off"))
         error (
-          "iluc: 3. parameter must be 'row', 'col' or 'off' character string.");
+          "ilu0: 2. parameter must be 'row', 'col' or 'off' character string.");
       // maybe resolve milu to a numerical value / enum type already here!
     }
 

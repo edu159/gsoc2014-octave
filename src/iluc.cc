@@ -123,12 +123,6 @@ void ilu_crout (octave_matrix_t& sm_l, octave_matrix_t& sm_u,
               }
         }
 
-      // Check if the pivot is zero
-      if (w_data_u[k] == zero)
-        {
-              error ("ilutp: There is a pivot equal to zero.");
-              break;
-        }
 
       // Expand the working row into the U output data structures
       w_len_l = 0;
@@ -178,6 +172,13 @@ void ilu_crout (octave_matrix_t& sm_l, octave_matrix_t& sm_u,
       // Compensate row and column sums --> milu option
       if (opt == COL || opt == ROW)
         data_u[total_len_u] += cr_sum[k];
+
+      // Check if the pivot is zero
+      if (data_u[total_len_u] == zero)
+        {
+              error ("ilutp: There is a pivot equal to zero.");
+              break;
+        }
       
       // Scale the elements in L by the pivot
       for (i = total_len_l ; i < (total_len_l + w_len_l); i++)
@@ -308,8 +309,9 @@ Minneapolis, Minnesota: Siam 2003.\n\
 
   octave_value_list retval;
   int nargin = args.length ();
-  std::string milu;
-  double droptol, thresh;
+  std::string milu = "off";
+  double droptol = 0;
+  double thresh = 0;
 
   if (nargout != 2 || nargin < 1 || nargin > 3)
     {
@@ -372,7 +374,7 @@ Minneapolis, Minnesota: Siam 2003.\n\
         }
       else
         {
-          Array<std::complex<double> > cols_norm, rows_norm;
+          Array<Complex> cols_norm, rows_norm;
           param_list.append (args (0).sparse_complex_matrix_value ());
           SparseComplexMatrix sm_u =  feval("triu", 
                                             param_list)(0).sparse_complex_matrix_value (); 
