@@ -88,7 +88,7 @@ void ichol_t (const octave_matrix_t& sm, octave_matrix_t& L, const T* cols_norm,
   const octave_idx_type n = sm.cols ();
   const octave_idx_type nnz = sm.nnz ();
   OCTAVE_LOCAL_BUFFER (octave_idx_type, iw, n);
-  octave_idx_type j, jrow,jjrow, jw, i, k, jj, Llist_len, total_len, w_len,
+  octave_idx_type j, jrow, jend, jjrow, jw, i, k, jj, Llist_len, total_len, w_len,
                   max_len;
 
   char opt;
@@ -98,8 +98,8 @@ void ichol_t (const octave_matrix_t& sm, octave_matrix_t& L, const T* cols_norm,
   else
     opt = OFF;
 
-//clock_t t_i, t_f, t_ii, t_ff; 
-//double time_spent1, time_spent2;
+clock_t t_i, t_f, t_ii, t_ff; 
+double time_spent1, time_spent2;
 
   octave_idx_type* cidx_in = sm.cidx ();
   octave_idx_type* ridx_in = sm.ridx ();
@@ -124,33 +124,40 @@ void ichol_t (const octave_matrix_t& sm, octave_matrix_t& L, const T* cols_norm,
   cidx_l[0] = cidx_in[0];
   for (i = 0; i < n; i++)
     {
-      Llist[i] = 0;
-      Lfirst[i] = 0;
+      Llist[i] = -1;
+      Lfirst[i] = -1;
       w_data[i] = 0;
       col_drops[i] = zero;
       col_drops_future[i] = zero;
     }
-  Llist_len = 0;
   total_len = 0;
-  //time_spent1 = 0;
-  //time_spent2 = 0;
+  time_spent1 = 0;
+  time_spent2 = 0;
   for (k = 0; k < n; k++)
     {
     //  printf("k: %d\n", k);
       for (j = cidx_in[k]; j < cidx_in[k+1]; j++)
         w_data[ridx_in[j]] = data_in[j];
-      j = 0;
-      jrow = Llist[j];
-      while (j < Llist_len) 
+      jrow = Llist[k];
+      while (jrow != -1) 
         {
           jjrow = Lfirst[jrow];
-          for (jj = jjrow; jj < cidx_l[jrow+1]; jj++)
+          jend = cidx_l[jrow+1];
+          for (jj = jjrow; jj < jend; jj++)
             w_data[ridx_l[jj]] -=  ichol_mult (data_l[jj], data_l[jjrow]);
-          j++;
-          jrow = Llist[j];
+          if ((jjrow + 1) < jend)
+            {
+              Lfirst[jrow]++;
+              j = jrow;
+              jrow = Llist[jrow];
+              Llist[j] = Llist[ridx_l[Lfirst[j]]];
+              Llist[ridx_l[Lfirst[j]]] = j;
+            }
+          else
+            jrow = Llist[jrow];
         }
 
-      //t_i = clock ();
+      t_ii = clock ();
       if ((max_len - total_len) < n)
         {
           max_len += (0.1 * max_len) > n ? 0.1 * max_len : n;
@@ -159,8 +166,9 @@ void ichol_t (const octave_matrix_t& sm, octave_matrix_t& L, const T* cols_norm,
           ridx_out_l.resize (dim_vector (max_len, 1));
           ridx_l = ridx_out_l.fortran_vec ();
         }
-    //  t_f = clock ();
-     // time_spent1 += (double) (t_f - t_i) /CLOCKS_PER_SEC;
+      t_ff = clock ();
+      time_spent2 += (double) (t_ff - t_ii) /CLOCKS_PER_SEC;
+      t_i = clock ();
       data_l[total_len] = w_data[k];
       ridx_l[total_len] = k;
       w_len = 1;
@@ -185,6 +193,8 @@ void ichol_t (const octave_matrix_t& sm, octave_matrix_t& L, const T* cols_norm,
             }
           w_data[i] = zero;
         }
+      t_f = clock ();
+      time_spent1 += (double) (t_f - t_i) /CLOCKS_PER_SEC;
 
       // Compensate column sums --> michol option
       if (opt == ON)
@@ -202,35 +212,21 @@ void ichol_t (const octave_matrix_t& sm, octave_matrix_t& L, const T* cols_norm,
         data_l[jj] /=  data_l[total_len];
       total_len += w_len;
       cidx_l[k+1] = cidx_l[k] - cidx_l[0] + w_len;
-     // t_ii = clock ();
-      if (k < (n - 1))
+      if (k < (n - 1)) 
         {
-          Llist_len = 0;
           Lfirst[k] = cidx_l[k];
-          for (i = 0; i <= k; i++)
+          if ((Lfirst[k] + 1) < cidx_l[k+1])
             {
-              jj = ridx_l[Lfirst[i]];
-              if (jj < (k + 1))
-                if(Lfirst[i] < (cidx_l[i+1]))
-                  {
-                    if ((Lfirst[i] + 1) < cidx_l[i+1])
-                      {
-                        Lfirst[i]++;
-                        jj = ridx_l[Lfirst[i]];
-                      }
-                  }
-              if (jj == (k + 1)) 
-                {
-                  Llist[Llist_len] = i;
-                  Llist_len++;
-                }
+              Lfirst[k]++;
+              jjrow = ridx_l[Lfirst[k]];
+              Llist[k] = Llist[jjrow];
+              Llist[jjrow] = k;
             }
         }
-     // t_ff = clock ();
-      //time_spent2 += (double) (t_ff - t_ii) /CLOCKS_PER_SEC;
-    }
-     // printf ("Time1: %f\n", time_spent1);
-     // printf ("Time2: %f\n", time_spent2);
+        
+      }
+      printf ("Time1: %f\n", time_spent1);
+      printf ("Time2: %f\n", time_spent2);
   if (!error_state)
     {
       // Build the output matrices
@@ -363,19 +359,19 @@ Minneapolis, Minnesota: Siam 2003.\n\
 %! A_3 = gallery ('tridiag', 50);
 %! A_3_in = sparse(tril (A_3));
 %!
-%! nx = 400; ny = 200;
-%! hx = 1 / (nx + 1); hy = 1 / (ny + 1);
-%! Dxx = spdiags ([ones(nx, 1), -2 * ones(nx, 1), ones(nx, 1)], [-1 0 1 ], nx, nx) / (hx ^ 2);
-%! Dyy = spdiags ([ones(ny, 1), -2 * ones(ny, 1), ones(ny, 1)], [-1 0 1 ], ny, ny) / (hy ^ 2);
-%! A_4 = -kron (Dxx, speye (ny)) - kron (speye (nx), Dyy);
-%! A_4_in = sparse(tril (A_4));
+ nx = 400; ny = 200;
+ hx = 1 / (nx + 1); hy = 1 / (ny + 1);
+ Dxx = spdiags ([ones(nx, 1), -2 * ones(nx, 1), ones(nx, 1)], [-1 0 1 ], nx, nx) / (hx ^ 2);
+ Dyy = spdiags ([ones(ny, 1), -2 * ones(ny, 1), ones(ny, 1)], [-1 0 1 ], ny, ny) / (hy ^ 2);
+ A_4 = -kron (Dxx, speye (ny)) - kron (speye (nx), Dyy);
+ A_4_in = sparse(tril (A_4));
 %!
- A_5 = [ 0.37, -0.05,          -0.05,  -0.07;
-        -0.05,  0.116,          0.0,   -0.05 + 0.05i;
-        -0.05,  0.0,            0.116, -0.05;
-        -0.07, -0.05 - 0.05i,  -0.05,   0.202];
- A_5 = sparse(A_5);
- A_5_in = sparse(tril (A_5));
+%! A_5 = [ 0.37, -0.05,          -0.05,  -0.07;
+%!        -0.05,  0.116,          0.0,   -0.05 + 0.05i;
+%!        -0.05,  0.0,            0.116, -0.05;
+%!        -0.07, -0.05 - 0.05i,  -0.05,   0.202];
+%! A_5 = sparse(A_5);
+%! A_5_in = sparse(tril (A_5));
 %!
 %!test
 %!error icholt ([]);
