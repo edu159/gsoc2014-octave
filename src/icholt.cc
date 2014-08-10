@@ -19,12 +19,9 @@
 
 #include <octave/oct.h>
 #include <octave/parse.h>
-#include <time.h>
 
-/**
- * Performs the multiplication needed by the Cholesky factorization in the
- * complex case.
- */
+// Secondary functions specialiced for complex or real case used
+// in icholt algorithms.
 template < typename T > inline T
 ichol_mult_complex (T a, T b)
 {
@@ -37,59 +34,47 @@ ichol_checkpivot_complex (T pivot)
 {
   if (pivot.imag () != 0)
     {
-      error ("Non-real pivot encountered.");
+      error ("icholt: Non-real pivot encountered. \
+              The matrix must be hermitian");
       return false;
     }
   else if (pivot.real () < 0)
     {
-      error ("Non-positive pivot encountered.");
+      error ("icholt: Non-positive pivot encountered.");
       return false;
     }
   return true;
 
 }
+
 template < typename T > inline bool
 ichol_checkpivot_real (T pivot)
 {
-  if (pivot < T(0))
+  if (pivot < T (0))
     {
-      error ("Non-positive pivot encountered.");
+      error ("icholt: Non-positive pivot encountered.");
       return false;
     }
   return true;
-
 }
-/**
- * Performs the multiplication needed by the Cholesky factorization in the
- * real case.
- */
+
 template < typename T> inline T 
 ichol_mult_real (T a, T b)
 {
   return a * b;
 }
 
-/* 
- * That function implements the IKJ and JKI variants of gaussian elimination to
- * perform the ILUTP decomposition. The behaviour is controlled by michol
- * parameter. If michol = ['off'|'col'] the JKI version is performed taking
- * advantage of CCS format of the input matrix. If michol = 'row' the input matrix
- * has to be transposed to obtain the equivalent CRS structure so we can work
- * efficiently with rows. In this case IKJ version is used.
- */
 
-template <typename octave_matrix_t, typename T,  T(*ichol_mult) (T, T), 
-          bool(*ichol_checkpivot) (T)>
+template <typename octave_matrix_t, typename T,  T (*ichol_mult) (T, T), 
+          bool (*ichol_checkpivot) (T)>
 void ichol_t (const octave_matrix_t& sm, octave_matrix_t& L, const T* cols_norm,
               const T droptol, const std::string michol = "off")
               
 {
 
   const octave_idx_type n = sm.cols ();
-  const octave_idx_type nnz = sm.nnz ();
-  OCTAVE_LOCAL_BUFFER (octave_idx_type, iw, n);
   octave_idx_type j, jrow, jend, jjrow, jw, i, k, jj, Llist_len, total_len, w_len,
-                  max_len;
+                  max_len, ind;
 
   char opt;
   enum {OFF, ON};
@@ -98,19 +83,19 @@ void ichol_t (const octave_matrix_t& sm, octave_matrix_t& L, const T* cols_norm,
   else
     opt = OFF;
 
-clock_t t_i, t_f, t_ii, t_ff; 
-double time_spent1, time_spent2;
+  // Input matrix pointers
+  octave_idx_type* cidx = sm.cidx ();
+  octave_idx_type* ridx = sm.ridx ();
+  T* data = sm.data ();
 
-  octave_idx_type* cidx_in = sm.cidx ();
-  octave_idx_type* ridx_in = sm.ridx ();
-  T* data_in = sm.data ();
-  OCTAVE_LOCAL_BUFFER(T, w_data, n);
-  OCTAVE_LOCAL_BUFFER(octave_idx_type, Lfirst, n);
-  OCTAVE_LOCAL_BUFFER(octave_idx_type, Llist, n);
-  OCTAVE_LOCAL_BUFFER(T, col_drops, n);
-  OCTAVE_LOCAL_BUFFER(T, col_drops_future, n);
-  // Arrays for L
-  max_len = nnz;
+  // Output matrix data structures. Because it is not known the 
+  // final zero pattern of the output matrix due to fill-in elements,
+  // an heuristic approach has been adopted for memory allocation. The 
+  // size of ridx_out_l and data_out_l is incremented 10% of their actual
+  // size (nnz(A) in the beginning).  If that amount is less than n, their
+  // size is just incremented in n elements. This way the number of
+  // reallocations decrease throughout the process, obtaining a good performance.
+  max_len = sm.nnz ();
   max_len += (0.1 * max_len) > n ? 0.1 * max_len : n;
   Array <octave_idx_type> cidx_out_l (dim_vector (n + 1,1));
   octave_idx_type* cidx_l = cidx_out_l.fortran_vec ();
@@ -119,32 +104,60 @@ double time_spent1, time_spent2;
   Array <T> data_out_l (dim_vector (max_len, 1));
   T* data_l = data_out_l.fortran_vec ();
 
-  T zero = T(0);
+  // Working arrays
+  OCTAVE_LOCAL_BUFFER (T, w_data, n);
+  OCTAVE_LOCAL_BUFFER (octave_idx_type, Lfirst, n);
+  OCTAVE_LOCAL_BUFFER (octave_idx_type, Llist, n);
+  OCTAVE_LOCAL_BUFFER (T, col_drops, n);
+  std::vector <octave_idx_type> vec;
+  vec.resize (n);
 
-  cidx_l[0] = cidx_in[0];
+
+  T zero = T (0);
+  cidx_l[0] = cidx[0];
   for (i = 0; i < n; i++)
     {
       Llist[i] = -1;
       Lfirst[i] = -1;
       w_data[i] = 0;
       col_drops[i] = zero;
-      col_drops_future[i] = zero;
+      vec[i] = 0;
     }
+
   total_len = 0;
-  time_spent1 = 0;
-  time_spent2 = 0;
   for (k = 0; k < n; k++)
     {
-    //  printf("k: %d\n", k);
-      for (j = cidx_in[k]; j < cidx_in[k+1]; j++)
-        w_data[ridx_in[j]] = data_in[j];
+      ind = 0;
+      for (j = cidx[k]; j < cidx[k+1]; j++)
+        {
+          w_data[ridx[j]] = data[j];
+          if (ridx[j] != k)
+            {
+              vec[ind] = ridx[j];
+              ind++;
+            }
+        }
       jrow = Llist[k];
       while (jrow != -1) 
         {
           jjrow = Lfirst[jrow];
           jend = cidx_l[jrow+1];
           for (jj = jjrow; jj < jend; jj++)
-            w_data[ridx_l[jj]] -=  ichol_mult (data_l[jj], data_l[jjrow]);
+            {
+              j = ridx_l[jj];
+              // If the element in the j position of the row is zero,
+              // then it will become non-zero, so we add it to the 
+              // vector that keeps track of non-zero elements in the working row.
+              if (w_data[j] == zero)
+                {
+                  vec[ind] = j; 
+                  ind++;
+                }
+              w_data[j] -=  ichol_mult (data_l[jj], data_l[jjrow]);
+
+            }
+          // Update the actual column first element and update the 
+          // linked list of the jrow row.
           if ((jjrow + 1) < jend)
             {
               Lfirst[jrow]++;
@@ -157,7 +170,7 @@ double time_spent1, time_spent2;
             jrow = Llist[jrow];
         }
 
-      t_ii = clock ();
+      // Resizing output arrays
       if ((max_len - total_len) < n)
         {
           max_len += (0.1 * max_len) > n ? 0.1 * max_len : n;
@@ -166,52 +179,66 @@ double time_spent1, time_spent2;
           ridx_out_l.resize (dim_vector (max_len, 1));
           ridx_l = ridx_out_l.fortran_vec ();
         }
-      t_ff = clock ();
-      time_spent2 += (double) (t_ff - t_ii) /CLOCKS_PER_SEC;
-      t_i = clock ();
+      
+      // The sorting of the non-zero elements of the working column can be
+      // handled in a couple of ways. The most efficient two I found, are 
+      // keeping the elements in an ordered binary search tree dinamically 
+      // or keep them unsorted in a vector and at the end of the outer 
+      // iteration order them. The last approach exhibit lower execution 
+      // times.   
+      std::sort (vec.begin (), vec.begin () + ind);
+
       data_l[total_len] = w_data[k];
       ridx_l[total_len] = k;
       w_len = 1;
-      for (i = k + 1; i < n; i++)
+
+      // Extract then non-zero elements of working column and drop the
+      // elements that are lower than droptol * cols_norm[k].
+      for (i = 0; i < ind ; i++)
         {
-          if (w_data[i] != zero)
+          jrow = vec[i];
+          if (w_data[jrow] != zero)
             {
-              if (std::abs (w_data[i]) < (droptol * cols_norm[k]))
+              if (std::abs (w_data[jrow]) < (droptol * cols_norm[k]))
                 {
                   if (opt == ON)
                     {
-                      col_drops[k] += w_data[i];
-                      col_drops_future[i] += w_data[i];
+                      col_drops[k] += w_data[jrow];
+                      col_drops[jrow] += w_data[jrow];
                     }
                 }
               else
                 {
-                  data_l[total_len + w_len] = w_data[i];
-                  ridx_l[total_len + w_len] = i;
+                  data_l[total_len + w_len] = w_data[jrow];
+                  ridx_l[total_len + w_len] = jrow;
                   w_len++;
                 }
+              vec[i] = 0;
             }
-          w_data[i] = zero;
+          w_data[jrow] = zero;
         }
-      t_f = clock ();
-      time_spent1 += (double) (t_f - t_i) /CLOCKS_PER_SEC;
 
       // Compensate column sums --> michol option
       if (opt == ON)
-        data_l[total_len] += col_drops[k] + col_drops_future[k];
+        data_l[total_len] += col_drops[k];
 
       if (data_l[total_len] == zero)
         {
-          error ("ilu0: There is a pivot equal to zero.");
+          error ("icholt: There is a pivot equal to zero.");
           break;
         }
       else if (!ichol_checkpivot (data_l[total_len]))
         break;
-      data_l[total_len] = std::sqrt(data_l[total_len]);
+
+      // Once the elements are dropped and compensation of columns 
+      // sums are done, scale the elements by the pivot.
+      data_l[total_len] = std::sqrt (data_l[total_len]);
       for (jj = total_len + 1; jj < (total_len + w_len); jj++)
         data_l[jj] /=  data_l[total_len];
       total_len += w_len;
       cidx_l[k+1] = cidx_l[k] - cidx_l[0] + w_len;
+
+      // Update Llist and Lfirst with the k-column information.
       if (k < (n - 1)) 
         {
           Lfirst[k] = cidx_l[k];
@@ -225,9 +252,8 @@ double time_spent1, time_spent2;
         }
         
       }
-      printf ("Time1: %f\n", time_spent1);
-      printf ("Time2: %f\n", time_spent2);
-  if (!error_state)
+
+  if (! error_state)
     {
       // Build the output matrices
       L = octave_matrix_t (n, n, total_len);
@@ -243,33 +269,38 @@ double time_spent1, time_spent2;
 }
 
 DEFUN_DLD (icholt, args, nargout, "-*- texinfo -*-\n\
-@deftypefn  {Loadable Function} {[@var{L}, @var{U}] =} ilu0 (@var{A})\n\
-@deftypefnx  {Loadable Function} {[@var{L}, @var{U}] =} ilu0 (@var{A}, @var{michol})\n\
+@deftypefn  {Loadable Function} {@var{L} =} icholt (@var{A}, @var{droptol}, @var{michol})\n\
 \n\
-NOTE: No pivoting is performed.\n\
+Computes the thresholded Incomplete Cholesky factorization [ICT] of A \
+which must be an square hermitian matrix in the complex case and a symmetric \
+positive definite matrix in the real one. \
 \n\
-Computes the incomplete LU-factorization (ILU) with 0-order level of fill of \
-@var{A}.\n\
-\n\
-@code{[@var{L}, @var{U}] = ilu0 (@var{A})} computes the zero fill-in ILU-\
-factorization ILU(0) of @var{A}, such that @code{@var{L} * @var{U}} is an \
-approximation of the square sparse matrix @var{A}. Parameter @var{michol} = \
-['off'|'row'|'col'] set if no row nor column sums are preserved, row sums \
-are preserved or column sums are preserved respectively.\n\
-\n\
-For a full description of ILU0 and its options see ilu documentation.\n\
+@code{[@var{L}] = icholt (@var{A}, @var{droptol}, @var{michol})} \
+computes the ICT of @var{A}, such that @code{@var{L} * @var{L}'} is an \
+approximation of the square sparse hermitian matrix @var{A}. @var{droptol} is \
+a non-negative scalar used as a drop tolerance when performing ICT. Elements \
+which are smaller in magnitude than @code{@var{droptol} * norm(@var{A}(j:end, j), 1)} \
+, are dropped from the resulting factor @var{L}. The parameter @var{michol} \
+decides whether the Modified IC(0) should be performed. This compensates the \
+main diagonal of @var{L}, such that @code{@var{A} * @var{e} = @var{L} * @var{L}' \
+ * @var{e}} with @code{@var{e} = ones (size (@var{A}, 2), 1))} holds. \n\
 \n\
 For more information about the algorithms themselves see:\n\
 \n\
-[1] Saad, Yousef: Iterative Methods for Sparse Linear Systems. Second Edition. \
-Minneapolis, Minnesota: Siam 2003.\n\
+[1] Saad, Yousef. \"Preconditioning Techniques.\" Iterative Methods for Sparse Linear \
+Systems. PWS Publishing Company, 1996. \
 \n\
-    @seealso{ilu, ilutp, iluc, ichol}\n\
-    @end deftypefn")
+\n\
+[2] Jones, Mark T. and Plassmann, Paul E.: An Improved Incomplete Cholesky \
+Factorization (1992). \
+\n\
+@seealso{ichol, ichol0, chol, ilu}\n\
+@end deftypefn")
 {
   octave_value_list retval;
 
   int nargin = args.length ();
+  // Default values of parameters
   std::string michol = "off";
   double droptol = 0;
  
@@ -285,7 +316,7 @@ Minneapolis, Minnesota: Siam 2003.\n\
 
   if (args (0).is_empty ())
     {
-      retval (0) = octave_value (SparseMatrix());
+      retval (0) = octave_value (SparseMatrix ());
       return retval;
     }
 
@@ -305,39 +336,41 @@ Minneapolis, Minnesota: Siam 2003.\n\
 
   if (!error_state)
     {
-      // In ICHOL0 algorithm the zero-pattern of the input matrix is preserved so
-      // it's structure does not change during the algorithm. The same input
-      // matrix is used to build the output matrix due to that fact.
       octave_value_list param_list;
-      if (!args (0).is_complex_type ())
+      if (! args (0).is_complex_type ())
         {
-          Array<double> cols_norm;
+          Array <double> cols_norm;
           SparseMatrix L;
           param_list.append (args (0).sparse_matrix_value ());
-          SparseMatrix sm_l = feval ("tril", param_list)(0).sparse_matrix_value (); 
+          SparseMatrix sm_l = feval ("tril", 
+                                     param_list) (0).sparse_matrix_value (); 
+          param_list (0) = sm_l;
           param_list (1) = 1;
           param_list (2) = "cols";
-          cols_norm = feval ("norm", param_list)(0).vector_value ();
+          cols_norm = feval ("norm", param_list) (0).vector_value ();
           param_list.clear ();
           ichol_t <SparseMatrix, 
                    double, ichol_mult_real, ichol_checkpivot_real> 
                    (sm_l, L, cols_norm.fortran_vec (), droptol, michol);
-          if (!error_state)
+          if (! error_state)
             retval (0) = octave_value (L);
         }
       else
         {
-          Array<Complex> cols_norm;
+          Array <Complex> cols_norm;
           SparseComplexMatrix L;
           param_list.append (args (0).sparse_complex_matrix_value ());
-          SparseComplexMatrix sm_l = feval ("tril", param_list)(0).sparse_complex_matrix_value (); 
-          param_list (1) = "cols";
-          cols_norm = feval ("norm", param_list)(0).complex_vector_value ();
+          SparseComplexMatrix sm_l = feval ("tril", 
+                                            param_list) (0).sparse_complex_matrix_value (); 
+          param_list (0) = sm_l;
+          param_list (1) = 1;
+          param_list (2) = "cols";
+          cols_norm = feval ("norm", param_list) (0).complex_vector_value ();
           param_list.clear ();
           ichol_t <SparseComplexMatrix, 
                    Complex, ichol_mult_complex, ichol_checkpivot_complex> 
                    (sm_l, L, cols_norm.fortran_vec (), Complex (droptol), michol);
-          if (!error_state)
+          if (! error_state)
             retval (0) = octave_value (L);
         }
 
@@ -345,33 +378,39 @@ Minneapolis, Minnesota: Siam 2003.\n\
 
   return retval;
 }
+
 /*
-%!shared A_1, A_1_in, A_2, A_2_in, A_3, A_3_in, A_4, A_4_in, A_5, A_5_in
+%% Real matrices
+%!shared A_1, A_2, A_3, A_4, A_5
 %! A_1 = [ 0.37, -0.05,  -0.05,  -0.07;
 %!        -0.05,  0.116,  0.0,   -0.05;
 %!        -0.05,  0.0,    0.116, -0.05;
 %!        -0.07, -0.05,  -0.05,   0.202];
-%! A_1_in = sparse(tril (A_1));
+%! A_1 = sparse(A_1);
 %!
 %! A_2 = gallery ('poisson', 30);
-%! A_2_in = sparse(tril (A_2));
 %!
 %! A_3 = gallery ('tridiag', 50);
-%! A_3_in = sparse(tril (A_3));
 %!
- nx = 400; ny = 200;
- hx = 1 / (nx + 1); hy = 1 / (ny + 1);
- Dxx = spdiags ([ones(nx, 1), -2 * ones(nx, 1), ones(nx, 1)], [-1 0 1 ], nx, nx) / (hx ^ 2);
- Dyy = spdiags ([ones(ny, 1), -2 * ones(ny, 1), ones(ny, 1)], [-1 0 1 ], ny, ny) / (hy ^ 2);
- A_4 = -kron (Dxx, speye (ny)) - kron (speye (nx), Dyy);
- A_4_in = sparse(tril (A_4));
+%! nx = 400; ny = 200;
+%! hx = 1 / (nx + 1); hy = 1 / (ny + 1);
+%! Dxx = spdiags ([ones(nx, 1), -2 * ones(nx, 1), ones(nx, 1)], [-1 0 1 ], nx, nx) / (hx ^ 2);
+%! Dyy = spdiags ([ones(ny, 1), -2 * ones(ny, 1), ones(ny, 1)], [-1 0 1 ], ny, ny) / (hy ^ 2);
+%! A_4 = -kron (Dxx, speye (ny)) - kron (speye (nx), Dyy);
+%! A_4 = sparse (A_4);
 %!
 %! A_5 = [ 0.37, -0.05,          -0.05,  -0.07;
 %!        -0.05,  0.116,          0.0,   -0.05 + 0.05i;
 %!        -0.05,  0.0,            0.116, -0.05;
 %!        -0.07, -0.05 - 0.05i,  -0.05,   0.202];
 %! A_5 = sparse(A_5);
-%! A_5_in = sparse(tril (A_5));
+%! A_6 = [ 0.37,    -0.05 - i, -0.05,  -0.07;
+%!        -0.05 + i, 0.116,     0.0,   -0.05;
+%!        -0.05,     0.0,       0.116, -0.05;
+%!        -0.07,    -0.05,     -0.05,   0.202];
+%! A_6 = sparse(A_6);
+%! A_7 = A_5;
+%! A_7(1) = 2i;
 %!
 %!test
 %!error icholt ([]);
@@ -379,11 +418,11 @@ Minneapolis, Minnesota: Siam 2003.\n\
 %!error icholt ([],[],[]);
 %!error [~] = icholt ([],[],[]);
 %!error [L] = icholt ([],[],[]);
-%!error [L] = icholt ([], 1e-4, 1)
-%!error [L] = icholt (A_1_in, [], 'off')
-%!error [L] = icholt (A_1_in, 1e-4, [])
-%!error [L, E] = icholt (A_1_in, 1e-4, 'off')
-%!error [L] = icholt (A_1_in, 1e-4, 'off', A_1)
+%!error [L] = icholt ([], 1e-4, 1);
+%!error [L] = icholt (A_1, [], 'off');
+%!error [L] = icholt (A_1, 1e-4, []);
+%!error [L, E] = icholt (A_1, 1e-4, 'off');
+%!error [L] = icholt (A_1, 1e-4, 'off', A_1);
 %!error icholt (sparse (0), 1e-4, 'off');
 %!error icholt (sparse (-0), 1e-4, 'off');
 %!error icholt (sparse (-1), 1e-4, 'off');
@@ -393,38 +432,45 @@ Minneapolis, Minnesota: Siam 2003.\n\
 %!error icholt (sparse (1 - 1i), 1e-4, 'off');
 %!
 %!test
-%! [L] = icholt (sparse (1), 1e-4, 'off');
+%! L = icholt (sparse (1), 1e-4, 'off');
 %! assert (L, sparse (1));
-%! [L] = icholt (sparse (4), 1e-4, 'off');
+%! L = icholt (sparse (4), 1e-4, 'off');
 %! assert (L, sparse (2));
 %!
 %!test
-%! [L] = icholt (A_1_in, 1e-4, 'off');
-%! assert (norm (A_1 - L*L', 'fro') / norm (A_1, 'fro'), eps, eps)
-%! [L] = icholt (A_1_in, 1e-4, 'on');
-%! assert (norm (A_1 - L*L', 'fro') / norm (A_1, 'fro'), eps, eps)
+%! L = icholt (A_1, 1e-4, 'off');
+%! assert (norm (A_1 - L*L', 'fro') / norm (A_1, 'fro'), eps, eps);
+%! L = icholt (A_1, 1e-4, 'on');
+%! assert (norm (A_1 - L*L', 'fro') / norm (A_1, 'fro'), eps, eps);
 %!
 %!test
-%! [L] = icholt (A_2_in, 1e-4, 'off');
-%! assert (norm (A_2 - L*L', 'fro') / norm (A_2, 'fro'), 1e-4, 1e-4)
-%! [L] = icholt (A_2_in, 1e-4, 'on');
-%! assert (norm (A_2 - L*L', 'fro') / norm (A_2, 'fro'), 3e-4, 1e-4)
+%! L = icholt (A_2, 1e-4, 'off');
+%! assert (norm (A_2 - L*L', 'fro') / norm (A_2, 'fro'), 1e-4, 1e-4);
+%! L = icholt (A_2, 1e-4, 'on');
+%! assert (norm (A_2 - L*L', 'fro') / norm (A_2, 'fro'), 3e-4, 1e-4);
 %!
 %!test
-%! [L] = icholt (A_3_in, 1e-4, 'off');
-%! assert (norm (A_3 - L*L', 'fro') / norm (A_3, 'fro'), eps, eps)
-%! [L] = icholt (A_3_in, 1e-4, 'on');
-%! assert (norm (A_3 - L*L', 'fro') / norm (A_3, 'fro'), eps, eps)
+%! L = icholt (A_3, 1e-4, 'off');
+%! assert (norm (A_3 - L*L', 'fro') / norm (A_3, 'fro'), eps, eps);
+%! L = icholt (A_3, 1e-4, 'on');
+%! assert (norm (A_3 - L*L', 'fro') / norm (A_3, 'fro'), eps, eps);
 %!
 %!test
-%! [L] = icholt (A_4_in, 1e-4, 'off');
-%! assert (norm (A_4 - L*L', 'fro') / norm (A_4, 'fro'), 2e-4, 1e-4)
-%! [L] = icholt (A_4_in, 1e-4, 'on');
-%! assert (norm (A_4 - L*L', 'fro') / norm (A_4, 'fro'), 7e-4, 1e-4)
+%! L = icholt (A_4, 1e-4, 'off');
+%! assert (norm (A_4 - L*L', 'fro') / norm (A_4, 'fro'), 2e-4, 1e-4);
+%! L = icholt (A_4, 1e-4, 'on');
+%! assert (norm (A_4 - L*L', 'fro') / norm (A_4, 'fro'), 7e-4, 1e-4);
 %!
-%%!test
-%%!error [L] = icholt (A_5_in, 1e-4, 'off');
-%%!error [L] = icholt (A_5_in, 1e-4, 'on');
+%% Complex matrices
+%!test
+%! L = ichol0 (A_5, 'off');
+%! assert (norm (A_5 - L*L', 'fro') / norm (A_5, 'fro'), 1e-2, 1e-2);
+%! L = ichol0 (A_5, 'on');
+%! assert (norm (A_5 - L*L', 'fro') / norm (A_5, 'fro'), 2e-2, 1e-2);
+%% Negative pivot 
+%!error ichol0 (A_6, 'off');
+%% Complex entry in the diagonal
+%!error ichol0 (A_7, 'off');
 */
 
 

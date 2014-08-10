@@ -17,7 +17,7 @@
 
 ## -*- texinfo -*-
 ## @deftypefn  {Function File} ichol (@var{A}, @var{opts})
-## @deftypefnx {Function File} {[@var{L}] =} ichol (@var{A}, @var{opts})
+## @deftypefnx {Function File} {@var{L} =} ichol (@var{A}, @var{opts})
 ##
 ## @code{@var{L} = ichol (@var{A})} performs the incomplete Cholesky
 ## factorization of A with zero-fill.
@@ -43,13 +43,10 @@
 ## @item type
 ## Type of factorization.
 ## String indicating which flavor of incomplete Cholesky to perform. Valid
-## values of this field are @samp{nofill}, @samp{ict} and @samp{jp}. The
+## values of this field are @samp{nofill} and @samp{ict}. The
 ## @samp{nofill} variant performs incomplete Cholesky with zero-fill [IC(0)].
 ## The @samp{ict} variant performs incomplete Cholesky with threshold dropping
-## [ICT]. The @samp{jp} variant performs IC(0), but preserves the number of
-## non-zeros in each column, not the non-zero pattern and stores the biggest
-## absolut values of the factorization (see [1]). The default value is
-## @samp{nofill}.
+## [ICT]. The default value is @samp{nofill}.
 ##
 ## @item droptol
 ## Drop tolerance when type is @samp{ict}.
@@ -134,10 +131,13 @@
 ## ans =  0.062327
 ## @end example
 ##
-## Refernces for the implemented algorithms:
+## References for the implemented algorithms:
 ##
-## [3] Manteuffel, T. A.: An Incomplete Factorization Technique for Positive
-## Definite Linear Systems (1980)
+## [1] Saad, Yousef. "Preconditioning Techniques." Iterative Methods for Sparse Linear
+## Systems. PWS Publishing Company, 1996.
+##
+## [2] Jones, Mark T. and Plassmann, Paul E.: An Improved Incomplete Cholesky
+## Factorization (1992).
 ## @end deftypefn
 
 function [L] = ichol (A, opts)

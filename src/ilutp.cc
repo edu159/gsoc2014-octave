@@ -31,9 +31,10 @@
 
 template <typename octave_matrix_t, typename T>
 void ilu_tp (octave_matrix_t& sm, octave_matrix_t& L, octave_matrix_t& U, 
-             Array <octave_idx_type>& perm_vec, T* cols_norm, 
-             const T droptol = T(0), const T thresh = T(0), 
-             const  std::string milu = "off", const double udiag = 0)
+             octave_idx_type nnz_u, octave_idx_type nnz_l, T* cols_norm,  
+             Array <octave_idx_type>& perm_vec, const T droptol = T(0),
+             const T thresh = T(0), const  std::string milu = "off", 
+             const double udiag = 0)
   {
   
   // Map the strings into chars to faster comparation inside loops
@@ -57,28 +58,30 @@ void ilu_tp (octave_matrix_t& sm, octave_matrix_t& L, octave_matrix_t& U,
   octave_idx_type* ridx_in = sm.ridx ();
   T* data_in = sm.data ();
   octave_idx_type jrow, i, j, k, jj, c, total_len_l, total_len_u, p_perm, res, 
-                  max_ind;
+                  max_ind, max_len_l, max_len_u;
   T tl, aux, maximum;
 
-  // Data for L
-  // FIXME: ridx_l/u and data_l/u are fixed to the maximum possible ((n^2+n)/2)
-  //        that can be enhanced expanding a vector with an apropiate policy
-  Array <octave_idx_type> cidx_out_l (dim_vector (n + 1,1));
+  max_len_u = nnz_u;
+  max_len_u += (0.1 * max_len_u) > n ? 0.1 * max_len_u : n;
+  max_len_l = nnz_l;
+  max_len_l += (0.1 * max_len_l) > n ? 0.1 * max_len_l : n;
+
+  Array <octave_idx_type> cidx_out_l (dim_vector (n + 1, 1));
   octave_idx_type* cidx_l = cidx_out_l.fortran_vec ();
-  Array <octave_idx_type> ridx_out_l (dim_vector ((n*n + n) / 2,1));
+  Array <octave_idx_type> ridx_out_l (dim_vector (max_len_l, 1));
   octave_idx_type* ridx_l = ridx_out_l.fortran_vec ();
-  Array <T> data_out_l (dim_vector ((n*n + n) / 2,1));
+  Array <T> data_out_l (dim_vector (max_len_l ,1));
   T* data_l = data_out_l.fortran_vec ();
   // Data for U
-  Array <octave_idx_type> cidx_out_u (dim_vector (n + 1,1));
+  Array <octave_idx_type> cidx_out_u (dim_vector (n + 1, 1));
   octave_idx_type* cidx_u = cidx_out_u.fortran_vec ();
-  Array <octave_idx_type> ridx_out_u (dim_vector ((n*n + n) / 2,1));
+  Array <octave_idx_type> ridx_out_u (dim_vector (max_len_u, 1));
   octave_idx_type* ridx_u = ridx_out_u.fortran_vec ();
-  Array <T> data_out_u (dim_vector ((n*n + n) / 2,1));
+  Array <T> data_out_u (dim_vector (max_len_u, 1));
   T* data_u = data_out_u.fortran_vec();
 
   // Working arrays and permutation arrays
-  octave_idx_type w_len_u, w_len_l, ndrop_u, ndrop_l;
+  octave_idx_type w_len_u, w_len_l;
   T total_sum, partial_col_sum, partial_row_sum;
   std::set <octave_idx_type> iw_l;
   std::set <octave_idx_type> iw_u;
@@ -92,14 +95,15 @@ void ilu_tp (octave_matrix_t& sm, octave_matrix_t& L, octave_matrix_t& U,
   T zero = T(0);
   cidx_l[0] = cidx_in[0];
   cidx_u[0] = cidx_in[0];
-  for (i = 0; i < ((n*n)+n)/2; i++)
+  /**
+  for (i = 0; i < ; i++)
     {
       ridx_u[i] = 0;
       data_u[i] = 0;
       ridx_l[i] = 0;
       data_l[i] = 0;
     }
-
+**/
   for (i = 0; i < n; i++)
     {
       w_data[i] = 0;
@@ -142,8 +146,8 @@ void ilu_tp (octave_matrix_t& sm, octave_matrix_t& L, octave_matrix_t& U,
                   aux = w_data[p_perm];
                   if (opt == ROW)
                     {
-                      w_data[p_perm] -= tl*data_l[jj];
-                      partial_row_sum += tl*data_l[jj];
+                      w_data[p_perm] -= tl * data_l[jj];
+                      partial_row_sum += tl * data_l[jj];
                     }
                   else
                     {
@@ -281,6 +285,24 @@ void ilu_tp (octave_matrix_t& sm, octave_matrix_t& L, octave_matrix_t& U,
           }
       
 
+      if ((max_len_u - total_len_u) < n)
+        {
+          max_len_u += (0.1 * max_len_u) > n ? 0.1 * max_len_u : n;
+          data_out_u.resize (dim_vector (max_len_u, 1));
+          data_u = data_out_u.fortran_vec ();
+          ridx_out_u.resize (dim_vector (max_len_u, 1));
+          ridx_u = ridx_out_u.fortran_vec ();
+        }
+
+      if ((max_len_l - total_len_l) < n)
+        {
+          max_len_l += (0.1 * max_len_l) > n ? 0.1 * max_len_l : n;
+          data_out_l.resize (dim_vector (max_len_l, 1));
+          data_l = data_out_l.fortran_vec ();
+          ridx_out_l.resize (dim_vector (max_len_l, 1));
+          ridx_l = ridx_out_l.fortran_vec ();
+        }
+
       // Expand working vector into U.
       w_len_u = 0;
       for (it = iw_u.begin (); it != iw_u.end (); ++it)
@@ -291,6 +313,7 @@ void ilu_tp (octave_matrix_t& sm, octave_matrix_t& L, octave_matrix_t& U,
               ridx_u[total_len_u + w_len_u] = *it;
               w_len_u++;
             }
+          w_data[*it] = 0;
         }
       total_len_u += w_len_u;
       if (opt == ROW)
@@ -308,13 +331,11 @@ void ilu_tp (octave_matrix_t& sm, octave_matrix_t& L, octave_matrix_t& U,
               ridx_l[total_len_l + w_len_l] = *it;
               w_len_l++;
             }
+          w_data[*it] = 0;
         }
       total_len_l += w_len_l;
       cidx_l[k+1] = cidx_l[k] - cidx_l[0] + w_len_l;
 
-      // Clear the auxiliar data structures
-      for (i = 0; i < n; i++)
-        w_data[i] = 0;
       iw_l.clear ();
       iw_u.clear ();
     }
@@ -486,29 +507,33 @@ Minneapolis, Minnesota: Siam 2003.\n\
   if (! error_state)
     {
       octave_value_list param_list;
+      octave_idx_type nnz_u, nnz_l;
       if (!args (0).is_complex_type ())
         {
           Array <double> rc_norm;
           SparseMatrix sm = args (0).sparse_matrix_value ();
           param_list.append (sm);
+          nnz_u =  (feval ("triu", param_list)(0).sparse_matrix_value ()).nnz (); 
+          param_list.append (-1);
+          nnz_l =  (feval ("tril", param_list)(0).sparse_matrix_value ()).nnz (); 
           if (milu == "row")
-            param_list.append ("rows");
+            param_list (1) = "rows";
           else
-            param_list.append ("cols");
+            param_list (1) = "cols";
           rc_norm = feval ("norm", param_list)(0).vector_value ();
           param_list.clear ();
           Array <octave_idx_type> perm (dim_vector (sm.cols (), 1)); 
           SparseMatrix U;
           SparseMatrix L;
-          ilu_tp <SparseMatrix, double> (sm, L, U, perm, rc_norm.fortran_vec (),
-                                         droptol, thresh, milu, udiag);
+          ilu_tp <SparseMatrix, double> (sm, L, U, nnz_u, nnz_l, rc_norm.fortran_vec (),
+                                         perm, droptol, thresh, milu, udiag);
           if (! error_state)
             {
               param_list.append (octave_value (L.cols ()));
               SparseMatrix eye = feval ("speye", param_list)(0).sparse_matrix_value ();
               if (milu == "row")
                 {
-                  retval (0) = octave_value (L) + eye;
+                  retval (0) = octave_value (L + eye);
                   if (nargout == 2) 
                     retval (1) = octave_value (U);
                   else if (nargout == 3)
@@ -521,7 +546,7 @@ Minneapolis, Minnesota: Siam 2003.\n\
                 {
                   retval (1) = octave_value (U);
                   if (nargout == 2) 
-                    retval (0) = octave_value (L);
+                    retval (0) = octave_value (L + eye.index (perm, idx_vector::colon));
                   else if (nargout == 3)
                     {
                       retval (0) = octave_value (L.index (perm, idx_vector::colon)  + eye);
@@ -535,18 +560,21 @@ Minneapolis, Minnesota: Siam 2003.\n\
           Array <Complex> rc_norm;
           SparseComplexMatrix sm = args (0).sparse_complex_matrix_value ();
           param_list.append (sm);
+          nnz_u =  feval ("triu", param_list)(0).sparse_complex_matrix_value ().nnz (); 
+          param_list.append (-1);
+          nnz_l =  feval ("tril", param_list)(0).sparse_complex_matrix_value ().nnz (); 
           if (milu == "row")
-            param_list.append ("rows");
+            param_list (1) = "rows";
           else
-            param_list.append ("cols");
+            param_list (1) = "cols";
           rc_norm = feval ("norm", param_list)(0).complex_vector_value ();
           Array <octave_idx_type> perm (dim_vector (sm.cols (), 1)); 
           param_list.clear ();
           SparseComplexMatrix U;
           SparseComplexMatrix L;
           ilu_tp < SparseComplexMatrix, Complex> 
-                  (sm, L, U, perm, rc_norm.fortran_vec (), Complex (droptol),
-                   Complex (thresh), milu, udiag);
+                  (sm, L, U, nnz_u, nnz_l, rc_norm.fortran_vec (), perm, 
+                   Complex (droptol), Complex (thresh), milu, udiag);
 
           if (! error_state)
             {
@@ -555,7 +583,7 @@ Minneapolis, Minnesota: Siam 2003.\n\
                                                param_list)(0).sparse_complex_matrix_value ();
               if (milu == "row")
                 {
-                  retval (0) = octave_value (L) + eye;
+                  retval (0) = octave_value (L + eye);
                   if (nargout == 2) 
                     retval (1) = octave_value (U);
                   else if (nargout == 3)

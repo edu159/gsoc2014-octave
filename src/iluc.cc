@@ -39,10 +39,16 @@ void ilu_crout (octave_matrix_t& sm_l, octave_matrix_t& sm_u,
   else
     opt = OFF;
 
+  octave_idx_type jrow, i, j, k, jj, total_len_l, total_len_u, max_len_u,
+                  max_len_l, w_len_u, w_len_l, cols_list_len, rows_list_len;
 
   const octave_idx_type n = sm_u.cols ();
   sm_u = sm_u.transpose ();
 
+  max_len_u = sm_u.nnz ();
+  max_len_u += (0.1 * max_len_u) > n ? 0.1 * max_len_u : n;
+  max_len_l = sm_l.nnz ();
+  max_len_l += (0.1 * max_len_l) > n ? 0.1 * max_len_l : n;
   // Extract pointers to the arrays for faster access inside loops
   octave_idx_type* cidx_in_u = sm_u.cidx ();
   octave_idx_type* ridx_in_u = sm_u.ridx ();
@@ -50,20 +56,18 @@ void ilu_crout (octave_matrix_t& sm_l, octave_matrix_t& sm_u,
   octave_idx_type* cidx_in_l = sm_l.cidx ();
   octave_idx_type* ridx_in_l = sm_l.ridx ();
   T* data_in_l = sm_l.data ();
-  octave_idx_type jrow, i, j, k, jj, total_len_l, total_len_u;
-  octave_idx_type  w_len_u, w_len_l, cols_list_len, rows_list_len;
   T tl, pivot;
 
   // L output arrays
-  Array <octave_idx_type> ridx_out_l (dim_vector ((n*n + n) / 2, 1));
+  Array <octave_idx_type> ridx_out_l (dim_vector (max_len_l, 1));
   octave_idx_type* ridx_l = ridx_out_l.fortran_vec ();
-  Array <T> data_out_l (dim_vector ((n*n + n) / 2, 1));
+  Array <T> data_out_l (dim_vector (max_len_l, 1));
   T* data_l = data_out_l.fortran_vec ();
 
   // U output arrays
-  Array <octave_idx_type> ridx_out_u (dim_vector ((n*n + n) / 2, 1));
+  Array <octave_idx_type> ridx_out_u (dim_vector (max_len_u, 1));
   octave_idx_type* ridx_u = ridx_out_u.fortran_vec ();
-  Array <T> data_out_u (dim_vector ((n*n + n) / 2, 1));
+  Array <T> data_out_u (dim_vector (max_len_u, 1));
   T* data_u = data_out_u.fortran_vec ();
 
   // Working arrays
@@ -123,6 +127,23 @@ void ilu_crout (octave_matrix_t& sm_l, octave_matrix_t& sm_u,
               }
         }
 
+      if ((max_len_u - total_len_u) < n)
+        {
+          max_len_u += (0.1 * max_len_u) > n ? 0.1 * max_len_u : n;
+          data_out_u.resize (dim_vector (max_len_u, 1));
+          data_u = data_out_u.fortran_vec ();
+          ridx_out_u.resize (dim_vector (max_len_u, 1));
+          ridx_u = ridx_out_u.fortran_vec ();
+        }
+
+      if ((max_len_l - total_len_l) < n)
+        {
+          max_len_l += (0.1 * max_len_l) > n ? 0.1 * max_len_l : n;
+          data_out_l.resize (dim_vector (max_len_l, 1));
+          data_l = data_out_l.fortran_vec ();
+          ridx_out_l.resize (dim_vector (max_len_l, 1));
+          ridx_l = ridx_out_l.fortran_vec ();
+        }
 
       // Expand the working row into the U output data structures
       w_len_l = 0;
@@ -176,7 +197,7 @@ void ilu_crout (octave_matrix_t& sm_l, octave_matrix_t& sm_u,
       // Check if the pivot is zero
       if (data_u[total_len_u] == zero)
         {
-              error ("ilutp: There is a pivot equal to zero.");
+              error ("iluc: There is a pivot equal to zero.");
               break;
         }
       
@@ -342,7 +363,6 @@ Minneapolis, Minnesota: Siam 2003.\n\
       milu = args (2).string_value ();
       if (error_state || !(milu == "row" || milu == "col" || milu == "off"))
         error ("iluc: 3. parameter must be 'row', 'col' or 'off' character string.");
-      // again resolve MILU to enum already here?
     }
 
   if (! error_state)

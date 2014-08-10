@@ -268,21 +268,21 @@ endfunction
 %! setup.type = 'crout';
 %! setup.milu = 'row';
 %! setup.droptol = dtol;
-%! [L,U] = ilu (A,setup);
-%! e = ones (size(A,2),1);
-%! assert(norm(A*e-L*U*e), 1e-14, 1e-14);
+%! [L, U] = ilu (A, setup);
+%! e = ones (size (A,2),1);
+%! assert (norm (A*e - L*U*e), 1e-14, 1e-14);
 %!test
 %! setup.type = 'crout';
 %! setup.droptol = dtol;
-%! [L,U] = ilu(A,setup);
+%! [L, U] = ilu(A,setup);
 %! assert (norm (A - L * U, 'fro') / norm (A, 'fro'), 0.05, 1e-2);
 %!test
 %! setup.type = 'crout';
 %! setup.droptol = dtol;
-%! [L,U] = ilu (A, setup);
+%! [L, U] = ilu (A, setup);
 %! for j = 1:n
-%!   cmp_value = dtol * norm (A(:,j)) / 2;
-%!   non_zeros = nonzeros (U(:,j));
+%!   cmp_value = dtol * norm (A(:, j)) / 2;
+%!   non_zeros = nonzeros (U(:, j));
 %!   for i = 1:length (non_zeros);
 %!     assert (abs (non_zeros (i)) >= cmp_value, logical (1));
 %!   endfor
@@ -290,10 +290,10 @@ endfunction
 %!test
 %! setup.type = 'crout';
 %! setup.droptol = dtol;
-%! [L,U] = ilu (A, setup);
+%! [L, U] = ilu (A, setup);
 %! for j = 1:n
-%!   cmp_value = dtol * norm (A(:,j)) / 2;
-%!   non_zeros = nonzeros (U(:,j));
+%!   cmp_value = dtol * norm (A(:, j)) / 2;
+%!   non_zeros = nonzeros (U(:, j));
 %!   for i = 1:length (non_zeros);
 %!     assert (abs (non_zeros (i)) >= cmp_value, logical (1));
 %!   endfor
@@ -301,7 +301,8 @@ endfunction
 %!test
 %! setup.type = 'crout';
 %! setup.droptol = 0;
-%! [L1,U1] = ilu (A, setup);
-%! [L2,U2] = ilu (A);
+%! [L1, U1] = ilu (A, setup);
+%! setup.type = 'ilutp';
+%! [L2, U2] = ilu (A, setup);
 %! assert (norm (L1 - L2, 'fro') / norm (L1, 'fro'), 0, eps);
 %! assert (norm (U1 - U2, 'fro') / norm (U1, 'fro'), 0, eps);

@@ -32,20 +32,21 @@
 %a = [10+i 2 3 4 5; 2+2i 20 3 0 2; 2 1 15 0 0; 2 5 8 9 0; 0 0 1 3 9];
 %a = [10+2i 2 3 4 5; 0 20 3 0 2; 2 1 15 0 0; 2 5 8 9 0; 0 0 1 3 9];
 %a = [10 0 0 0 0; 0 20 0 0 0; 2 1 15 0 0; 2 5 8 9 0; 0 0 1 3 9];
-a = [0.37 -0.05 -0.05 -0.07; -0.05 0.116 0 -0.05; -0.05 0 0.116 -0.05; -0.07 -0.05 -0.05 0.202];
-%a = [0.37 -0.04 -0.05 -0.07; -0.04 0.116 0 -0.05; -0.05 0 0.116 -0.05; -0.07 -0.05 -0.05 0.202];
+%a = [0.37 -0.05 -0.05 -0.07; -0.05 0.116 0 -0.05; -0.05 0 0.116 -0.05; -0.07 -0.05 -0.05 0.202];
+a = [0.37 -0.04 -0.05 -0.07; -0.04 0.116 0 -0.05; -0.05 0 0.116 -0.05; -0.07 -0.05 -0.05 0.202];
 %a = A = sparse ([3 4 4 3 -1.1; 2 0 8 9 2.2; 2 1 9 9 1; 3.2 10 2.3 2 4.5; 9 2 6 2 1]);
+%a = gallery('poisson', 300);
 a = sparse(a);
 %setup.droptol = 0.0
 %setup.thresh = 0;
 %setup.udiag = 0;
-%setup.milu = 'col';
-%setup.type = 'ilutp';
-setup.type = 'nofill';
-setup.michol = 'on';
-setup.diagcomp = 0;
-setup.droptol = 1e-4;
-setup.shape = 'lower';
+setup.milu = 'off';
+setup.type = 'crout';
+%setup.type = 'ict';
+%setup.michol = 'on';
+%setup.diagcomp = 0;
+setup.droptol = 0;
+%setup.shape = 'lower';
 
 tic
 %L=ICHOL0(a, 'on');
@@ -53,8 +54,8 @@ tic
 %s=ilu0(a);
 %[L,U] = ILU_crout(a, setup.droptol);
 
-%[L, U, P] = ilu(a, setup);
-L = ichol(a, setup);
+[L, U, P] = ilu(a, setup);
+%L = ichol(a, setup);
 toc
 %L = tril(s,-1) +speye(length(s));
 %U = triu(s);

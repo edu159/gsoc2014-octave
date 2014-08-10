@@ -19,12 +19,9 @@
 
 #include <octave/oct.h>
 #include <octave/parse.h>
-#include <time.h>
 
-/**
- * Performs the multiplication needed by the Cholesky factorization in the
- * complex case.
- */
+// Secondary functions specialiced for complex or real case used
+// in icholt algorithms.
 template < typename T > inline T
 ichol_mult_complex (T a, T b)
 {
@@ -32,18 +29,18 @@ ichol_mult_complex (T a, T b)
   return a * b;
 }
 
-
 template < typename T > inline bool
 ichol_checkpivot_complex (T pivot)
 {
   if (pivot.imag () != 0)
     {
-      error ("Non-real pivot encountered. Input matrix must be hermitian.");
+      error ("ichol0: Non-real pivot encountered. \
+              The matrix must be hermitian.");
       return false;
     }
   else if (pivot.real () < 0)
     {
-      error ("Non-positive pivot encountered.");
+      error ("ichol0: Non-positive pivot encountered.");
       return false;
     }
   return true;
@@ -55,32 +52,28 @@ ichol_checkpivot_real (T pivot)
 {
   if (pivot < T(0))
     {
-      error ("Non-positive pivot encountered.");
+      error ("ichol0: Non-positive pivot encountered.");
       return false;
     }
   return true;
-
 }
 
-/**
- * Performs the multiplication needed by the Cholesky factorization in the
- * real case.
- */
 template < typename T> inline T 
 ichol_mult_real (T a, T b)
 {
   return a * b;
 }
 
-template <typename octave_matrix_t, typename T, T (*ichol_mult) (T, T), bool (*ichol_checkpivot) (T)>
+
+template <typename octave_matrix_t, typename T, T (*ichol_mult) (T, T), 
+          bool (*ichol_checkpivot) (T)>
 void ichol_0 (octave_matrix_t& sm, const std::string michol = "off") 
 {
 
   const octave_idx_type n = sm.cols ();
-  OCTAVE_LOCAL_BUFFER (octave_idx_type, iw, n);
-  octave_idx_type j1, jend, j2, jrow, jjrow, jw, i, k, jj, Llist_len_aux, Llist_len, r;
-  T tl;
+  octave_idx_type j1, jend, j2, jrow, jjrow, j, jw, i, k, jj, Llist_len, r;
 
+  T tl;
   char opt;
   enum {OFF, ON};
   if (michol == "on")
@@ -88,16 +81,18 @@ void ichol_0 (octave_matrix_t& sm, const std::string michol = "off")
   else
     opt = OFF;
 
-clock_t t_i, t_f, t_ii, t_ff; 
-double time_spent1, time_spent2;
-
+  // Input matrix pointers
   octave_idx_type* cidx = sm.cidx ();
   octave_idx_type* ridx = sm.ridx ();
   T* data = sm.data ();
-  OCTAVE_LOCAL_BUFFER(octave_idx_type, Lfirst, n);
-  OCTAVE_LOCAL_BUFFER(octave_idx_type, Llist, n);
-  OCTAVE_LOCAL_BUFFER(T, dropsums, n);
 
+  // Working arrays
+  OCTAVE_LOCAL_BUFFER (octave_idx_type, Lfirst, n);
+  OCTAVE_LOCAL_BUFFER (octave_idx_type, Llist, n);
+  OCTAVE_LOCAL_BUFFER (octave_idx_type, iw, n);
+  OCTAVE_LOCAL_BUFFER (T, dropsums, n);
+
+  // Initialise working arrays
   for (i = 0; i < n; i++)
     {
       iw[i] = -1;
@@ -105,18 +100,17 @@ double time_spent1, time_spent2;
       Lfirst[i] = -1;
       dropsums[i] = 0;
     }
-  time_spent1 = 0;
-  time_spent2 = 0;
+
+  // Main loop 
   for (k = 0; k < n; k++)
     {
-      //printf("k: %d\n", k);
       j1 = cidx[k];
       j2 = cidx[k+1];
-      octave_idx_type j;
       for (j = j1; j < j2; j++)
         iw[ridx[j]] = j;
+
       jrow = Llist [k];
-//      t_i = clock ();
+      // Iterate over each non-zero element in the actual row.
       while (jrow != -1) 
         {
           jjrow = Lfirst[jrow];
@@ -129,12 +123,16 @@ double time_spent1, time_spent2;
               if (jw != -1)
                 data[jw] -= tl;
               else
+                // Because of simetry of the matrix we know the drops
+                // in the column r are also in the column k.
                 if (opt == ON)
-                {
-                  dropsums[r] -= tl;
-                  dropsums[k] -= tl;
-                }
+                  {
+                    dropsums[r] -= tl;
+                    dropsums[k] -= tl;
+                  }
             }
+          // Update the linked list and the first entry of the
+          // actual column.
           if ((jjrow + 1) < jend)
             {
               Lfirst[jrow]++;
@@ -146,33 +144,24 @@ double time_spent1, time_spent2;
           else
             jrow = Llist[jrow];
         }
-      /**
-      printf("Llist_in: ");
-      for (j = 0; j < n; j++)
-        printf("%d ", Llist[j]);
-      printf("\n");
-      printf("Lfirst_in: ");
-      for (j = 0; j < n; j++)
-        printf("%d ", Lfirst[j]);
-      printf("\n");
-      **/
-  //    t_f = clock ();
-     // time_spent1 += (double) (t_f - t_i) /CLOCKS_PER_SEC;
-    //  t_ii = clock ();
+
       if (opt == ON)
         data[j1] += dropsums[k];
 
       if (ridx[j1] != k)
         {
-          error ("ilu0: There is a pivot equal to zero.");
+          error ("ichol0: There is a pivot equal to zero.");
           break;
         }
+
       if (!ichol_checkpivot (data[j1]))
         break;
 
       data[cidx[k]] = std::sqrt (data[j1]);
 
-              
+      // Update Llist and Lfirst with the k-column information.
+      // Also scale the column elements by the pivot and reset 
+      // the working array iw.
       if (k < (n - 1)) 
         {
           iw[ridx[j1]] = -1;
@@ -190,23 +179,7 @@ double time_spent1, time_spent2;
               Llist[jjrow] = k;
             }
         }
-
-      //printf("Llist_len: %d\n", Llist_len);
-      /**
-      printf("Llist_out: ");
-      for (j = 0; j < n; j++)
-        printf("%d ", Llist[j]);
-      printf("\n");
-      printf("Lfirst_out: ");
-      for (j = 0; j < n; j++)
-        printf("%d ", Lfirst[j]);
-      printf("\n");
-      **/
-       // t_ff = clock ();
-        //time_spent2 += (double) (t_ff - t_ii) /CLOCKS_PER_SEC;
     }
-//  printf ("Time1: %f\n", time_spent1);
- //printf ("Time2: %f\n", time_spent2);
 }
 
 DEFUN_DLD (ichol0, args, nargout, "-*- texinfo -*-\n\
@@ -217,9 +190,9 @@ which must be an square hermitian matrix in the complex case and a symmetric \
 positive definite matrix in the real one. \
 \n\
 \n\
-@code{[@var{L} = ichol0 (@var{A}, @var{michol})} \
+@code{@var{L} = ichol0 (@var{A}, @var{michol})} \
 computes the IC(0) of @var{A}, such that @code{@var{L} * @var{L}'} which \
-is an approximation of the square hermitian matrix @var{A}. \
+is an approximation of the square sparse hermitian matrix @var{A}. \
 The parameter @var{michol} decides whether the Modified IC(0) should \
 be performed. This compensates the main diagonal of \
 @var{L}, such that @code{@var{A} * @var{e} = @var{L} * @var{L}' * @var{e}} \
@@ -237,7 +210,7 @@ Systems. PWS Publishing Company, 1996. \
   octave_value_list retval;
 
   int nargin = args.length ();
-  std::string michol;
+  std::string michol = "off";
  
 
   if (nargout > 1 || nargin < 1 || nargin > 2)
@@ -259,9 +232,8 @@ Systems. PWS Publishing Company, 1996. \
   if (nargin == 2)
     {
       michol = args (1).string_value ();
-      if (error_state || !(michol == "on" || michol == "off"))
+      if (error_state || ! (michol == "on" || michol == "off"))
         error ("ichol0: 2. parameter must be 'on' or 'off' character string.");
-      // maybe resolve michol to a numerical value / enum type already here!
     }
 
 
@@ -277,16 +249,16 @@ Systems. PWS Publishing Company, 1996. \
           param_list.append (sm);
           sm = feval ("tril", param_list)(0).sparse_matrix_value (); 
           ichol_0 <SparseMatrix, double, ichol_mult_real, ichol_checkpivot_real> (sm, michol);
-          if (!error_state)
+          if (! error_state)
             retval (0) = octave_value (sm);
         }
       else
         {
           SparseComplexMatrix sm = args (0).sparse_complex_matrix_value ();
           param_list.append (sm);
-          sm = feval ("tril", param_list)(0).sparse_complex_matrix_value (); 
+          sm = feval ("tril", param_list) (0).sparse_complex_matrix_value (); 
           ichol_0 <SparseComplexMatrix, Complex, ichol_mult_complex, ichol_checkpivot_complex> (sm, michol);
-          if (!error_state)
+          if (! error_state)
             retval (0) = octave_value (sm);
         }
 
@@ -296,76 +268,92 @@ Systems. PWS Publishing Company, 1996. \
 }
 
 /*
-%!shared A_1, A_off_1, A_2, A_off_2, A_3, A_off_3, A_4, A_off_4, A_5, A_off_5
+%% Real matrices
+%!shared A_1, A_2, A_3, A_4, A_5
 %! A_1 = [ 0.37, -0.05,  -0.05,  -0.07;
 %!        -0.05,  0.116,  0.0,   -0.05;
 %!        -0.05,  0.0,    0.116, -0.05;
 %!        -0.07, -0.05,  -0.05,   0.202];
 %! A_1 = sparse(A_1);
-%! A_off_1 = (tril (A_1));
 %!
 %! A_2 = gallery ('poisson', 30);
-%! A_off_2 = (tril (A_2));
 %!
 %! A_3 = gallery ('tridiag', 50);
-%! A_off_3 = (tril (A_3));
 %!
 %! nx = 400; ny = 200;
 %! hx = 1 / (nx + 1); hy = 1 / (ny + 1);
 %! Dxx = spdiags ([ones(nx, 1), -2 * ones(nx, 1), ones(nx, 1)], [-1 0 1 ], nx, nx) / (hx ^ 2);
 %! Dyy = spdiags ([ones(ny, 1), -2 * ones(ny, 1), ones(ny, 1)], [-1 0 1 ], ny, ny) / (hy ^ 2);
 %! A_4 = -kron (Dxx, speye (ny)) - kron (speye (nx), Dyy);
-%! A_off_4 = (tril (A_4));
+%! A_4 = sparse (A_4);
 %!
 %! A_5 = [ 0.37, -0.05,          -0.05,  -0.07;
 %!        -0.05,  0.116,          0.0,   -0.05 + 0.05i;
 %!        -0.05,  0.0,            0.116, -0.05;
 %!        -0.07, -0.05 - 0.05i,  -0.05,   0.202];
 %! A_5 = sparse(A_5);
-%! A_off_5 = (tril (A_5));
+%! A_6 = [ 0.37,    -0.05 - i, -0.05,  -0.07;
+%!        -0.05 + i, 0.116,     0.0,   -0.05;
+%!        -0.05,     0.0,       0.116, -0.05;
+%!        -0.07,    -0.05,     -0.05,   0.202];
+%! A_6 = sparse(A_6);
+%! A_7 = A_5;
+%! A_7(1) = 2i;
 %!
 %% Test input
 %!test
 %!error ichol0 ([]);
 %!error ichol0 ([],[]);
-%!error ichol0 ([],[],[]);
 %!error [~,~] = ichol0 ([],[],[]);
 %!error [L] = ichol0 ([], 'foo');
-%!error [L] = ichol0 (A_off_1, [], false);
-%!error [L, E] = ichol0 (A_off_1, false);
-%!error ichol0 (sparse (0), false);
+%!error [L] = ichol0 (A_1, [], 'off');
+%!error [L, E] = ichol0 (A_1, 'off');
+%!error ichol0 (sparse (0), 'off');
+%!error ichol0 ([], 'foo');
 %!
 %!test
 %! L = ichol0 (sparse (1), 'off');
 %! assert (L, sparse (1));
 %! L = ichol0 (sparse (2), 'off');
 %! assert (L, sparse (sqrt (2)));
+%! L = ichol0 (sparse ([]), 'off');
+%! assert (L, sparse ([]));
 %!
 %!test
-%! L = ichol0 (A_off_1, 'off');
+%! L = ichol0 (A_1, 'off');
 %! assert (norm (A_1 - L*L', 'fro') / norm (A_1, 'fro'), 1e-2, 1e-2);
-%! L = ichol0 (A_off_1, 'on');
+%! L = ichol0 (A_1, 'on');
 %! assert (norm (A_1 - L*L', 'fro') / norm (A_1, 'fro'), 2e-2, 1e-2);
 %!
 %!test
-%! L = ichol0 (A_off_2, 'off');
+%! L = ichol0 (A_2, 'off');
 %! assert (norm (A_2 - L*L', 'fro') / norm (A_2, 'fro'), 1e-1, 1e-1)
+%! L = ichol0 (A_2, 'on');
+%! assert (norm (A_2 - L*L', 'fro') / norm (A_2, 'fro'), 2e-1, 1e-1)
 %!
 %!test
-%! L = ichol0 (A_off_3, 'off');
+%! L = ichol0 (A_3, 'off');
 %! assert (norm (A_3 - L*L', 'fro') / norm (A_3, 'fro'), eps, eps);
-%! L = ichol0 (A_off_3, 'on');
+%! L = ichol0 (A_3, 'on');
 %! assert (norm (A_3 - L*L', 'fro') / norm (A_3, 'fro'), eps, eps);
 %!
 %!test
-%! L = ichol0 (A_off_4, 'off');
+%! L = ichol0 (A_4, 'off');
+%! assert (norm (A_4 - L*L', 'fro') / norm (A_4, 'fro'), 1e-1, 1e-1);
+%! L = ichol0 (A_4, 'on');
 %! assert (norm (A_4 - L*L', 'fro') / norm (A_4, 'fro'), 1e-1, 1e-1);
 %!
+%% Complex matrices
 %!test
-%! L = ichol0 (A_off_5, 'off');
+%! L = ichol0 (A_5, 'off');
 %! assert (norm (A_5 - L*L', 'fro') / norm (A_5, 'fro'), 1e-2, 1e-2);
-%! L = ichol0 (A_off_5, 'on');
+%! L = ichol0 (A_5, 'on');
 %! assert (norm (A_5 - L*L', 'fro') / norm (A_5, 'fro'), 2e-2, 1e-2);
+%% Negative pivot 
+%!error ichol0 (A_6, 'off');
+%% Complex entry in the diagonal
+%!error ichol0 (A_7, 'off');
+
 */
 
 
