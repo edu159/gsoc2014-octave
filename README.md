@@ -1,6 +1,6 @@
 Description
 ---------------
-This is a repository with the standalone code of **[ichol][1]** and **[ilu][2]** functions included in GNU Octave >= 4.0.0. I developed them for the 10th edition of Google Summer of Code (2014). A set of blog posts about the development and benchmarking against Matlab's equivalents can be found [here][3].
+This is a repository with the standalone code of **[ichol][1]** and **[ilu][2]** functions included in GNU Octave >= 4.0.0. I developed them for the 10th edition of *Google Summer of Code* (2014). A set of blog posts about the development and benchmarking against Matlab's equivalents can be found [here][3].
 
 Compiling
 --------------
