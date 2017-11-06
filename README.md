@@ -15,7 +15,7 @@ To launch the Octave interpreter with the functions freshly compiled use the scr
 
     ./run_octave.sh
 
->**Note:** If you have a version of Octave >= 4.0.0 *ichol*  and *ilu* in-built versions will be override with the compiled from this repository.
+>**Note:** If you have a version of Octave >= 4.0.0 *ichol*  and *ilu* in-built versions will be overriden with the compiled ones from this repository.
 
  Contact
 -------------
